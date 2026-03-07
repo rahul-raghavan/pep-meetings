@@ -74,6 +74,18 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Auto-create "Admin" and "Admissions" classes for the new location
+  await db
+    .from('pep_classes')
+    .upsert(
+      [
+        { name: 'Admin', campus_id: data.id },
+        { name: 'Admissions', campus_id: data.id },
+      ],
+      { onConflict: 'name,campus_id' }
+    )
+
   return NextResponse.json(data)
 }
 
