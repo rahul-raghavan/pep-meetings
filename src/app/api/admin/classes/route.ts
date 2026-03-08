@@ -18,10 +18,26 @@ export async function GET() {
     .eq('is_active', true)
     .order('name')
 
-  // Admins only see classrooms in their location
+  // Admins only see classrooms in their location(s)
   if (user.role === 'admin') {
-    if (!user.campus_id) return NextResponse.json([])
-    query = query.eq('campus_id', user.campus_id)
+    if (user.campus_id) {
+      query = query.eq('campus_id', user.campus_id)
+    } else {
+      // Admin without a campus_id — find campuses from their class assignments
+      const { data: userClasses } = await db
+        .from('pep_user_classes')
+        .select('pep_classes(campus_id)')
+        .eq('user_id', user.id)
+
+      const campusIds = [...new Set(
+        (userClasses || [])
+          .map(uc => (uc.pep_classes as unknown as Record<string, unknown>)?.campus_id as string)
+          .filter(Boolean)
+      )]
+
+      if (campusIds.length === 0) return NextResponse.json([])
+      query = query.in('campus_id', campusIds)
+    }
   }
 
   const { data, error } = await query
