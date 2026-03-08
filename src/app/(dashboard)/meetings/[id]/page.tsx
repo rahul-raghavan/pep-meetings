@@ -178,9 +178,13 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     return speakerMap[label]?.role || null
   }
 
-  // Replace SPEAKER_XX labels with display names in summary text
+  // Replace speaker labels with display names in summary text
+  // Handles: SPEAKER_01, Speaker_01, Speaker 01, Speaker 1, etc.
   function replaceSpeakerLabels(text: string): string {
-    return text.replace(/SPEAKER_\d+/g, (match) => getSpeakerName(match))
+    return text.replace(/Speaker[_ ]?\d+/gi, (match) => {
+      const num = match.replace(/\D/g, '').padStart(2, '0')
+      return getSpeakerName(`SPEAKER_${num}`)
+    })
   }
 
   function getSpeakerColorIndex(label: string): number {
@@ -242,8 +246,13 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         alert(data.error || 'Failed to regenerate analysis')
         return
       }
-      // Reload the page data to show updated summary + action items
-      window.location.reload()
+      // Refetch meeting data to show updated summary + action items
+      const meetingRes = await fetch(`/api/meetings/${meeting.id}`)
+      if (meetingRes.ok) {
+        const data = await meetingRes.json()
+        setMeeting(data)
+        initSpeakerDrafts(data.participants)
+      }
     } catch {
       alert('Something went wrong. Please try again.')
     } finally {

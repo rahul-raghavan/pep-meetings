@@ -32,17 +32,18 @@ export async function PATCH(
 
   const db = createServiceClient()
 
-  // Upsert each speaker
-  for (const speaker of speakers) {
-    await db
-      .from('pep_meeting_participants')
-      .upsert({
+  // Upsert all speakers in a single call
+  await db
+    .from('pep_meeting_participants')
+    .upsert(
+      speakers.map(speaker => ({
         meeting_id: id,
         speaker_label: speaker.speaker_label,
         display_name: speaker.display_name || null,
         role: speaker.role || null,
-      }, { onConflict: 'meeting_id,speaker_label' })
-  }
+      })),
+      { onConflict: 'meeting_id,speaker_label' }
+    )
 
   // Return updated participants
   const { data } = await db

@@ -89,10 +89,11 @@ Guidelines for ACTION ITEMS:
     const needsAttention = shouldFlag(topicSections)
 
     // Clear old AI-generated action items before saving new ones (preserve manual items)
-    await supabase.from('pep_action_items').delete().eq('meeting_id', meetingId).eq('source', 'ai')
+    const { error: deleteError } = await supabase.from('pep_action_items').delete().eq('meeting_id', meetingId).eq('source', 'ai')
+    if (deleteError) throw new Error(`Failed to delete old action items: ${deleteError.message}`)
 
     // Save summary with topic sections and sentiment
-    await supabase
+    const { error: summaryError } = await supabase
       .from('pep_meeting_summaries')
       .upsert({
         meeting_id: meetingId,
@@ -102,12 +103,14 @@ Guidelines for ACTION ITEMS:
         overall_sentiment: overallSentiment,
         raw_llm_response: parsed,
       }, { onConflict: 'meeting_id' })
+    if (summaryError) throw new Error(`Failed to save summary: ${summaryError.message}`)
 
     // Update the meeting's needs_attention flag
-    await supabase
+    const { error: flagError } = await supabase
       .from('pep_meetings')
       .update({ needs_attention: needsAttention })
       .eq('id', meetingId)
+    if (flagError) throw new Error(`Failed to update needs_attention: ${flagError.message}`)
 
     // Save action items — now just simple string descriptions
     if (parsed.action_items && parsed.action_items.length > 0) {
@@ -121,7 +124,8 @@ Guidelines for ACTION ITEMS:
           source_segment_index: null,
         }
       })
-      await supabase.from('pep_action_items').insert(items)
+      const { error: insertError } = await supabase.from('pep_action_items').insert(items)
+      if (insertError) throw new Error(`Failed to save action items: ${insertError.message}`)
     }
   } catch {
     // Save raw response even if parsing fails

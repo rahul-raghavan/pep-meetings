@@ -80,18 +80,19 @@ export async function rebuildBlob(sessionId: string): Promise<Blob | null> {
   })
   if (!meta) return null
 
-  const chunks = await new Promise<{ sessionId: string; index: number; data: Blob }[]>(
+  // Use IDBKeyRange to query only this session's chunks (key is [sessionId, index])
+  const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity])
+  const sessionChunks = await new Promise<{ sessionId: string; index: number; data: Blob }[]>(
     (resolve, reject) => {
       const tx = db.transaction(CHUNKS_STORE, 'readonly')
-      const req = tx.objectStore(CHUNKS_STORE).getAll()
+      const req = tx.objectStore(CHUNKS_STORE).getAll(range)
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     }
   )
 
-  const sessionChunks = chunks
-    .filter((c) => c.sessionId === sessionId)
-    .sort((a, b) => a.index - b.index)
+  // Already sorted by key, but ensure order
+  sessionChunks.sort((a, b) => a.index - b.index)
 
   if (sessionChunks.length === 0) return null
 
@@ -112,13 +113,17 @@ export async function clearSession(sessionId: string): Promise<void> {
     tx.onerror = () => reject(tx.error)
   })
 
-  // Delete all chunks for this session
+  // Delete all chunks for this session using key range
+  const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Infinity])
   const chunks = await new Promise<{ sessionId: string; index: number }[]>(
     (resolve, reject) => {
       const tx = db.transaction(CHUNKS_STORE, 'readonly')
-      const req = tx.objectStore(CHUNKS_STORE).getAll()
+      const req = tx.objectStore(CHUNKS_STORE).getAllKeys(range)
       req.onsuccess = () =>
-        resolve(req.result.filter((c) => c.sessionId === sessionId))
+        resolve(req.result.map((key) => {
+          const [sid, idx] = key as unknown as [string, number]
+          return { sessionId: sid, index: idx }
+        }))
       req.onerror = () => reject(req.error)
     }
   )

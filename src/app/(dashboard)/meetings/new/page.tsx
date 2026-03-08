@@ -62,16 +62,9 @@ export default function NewMeetingPage() {
         throw new Error(msg)
       }
 
-      // Step 3: Trigger transcription
-      setUploadProgress('Starting transcription (this may take a few minutes)...')
-      const transcribeRes = await fetch(`/api/meetings/${meeting.id}/transcribe`, {
-        method: 'POST',
-      })
-      if (!transcribeRes.ok) {
-        let msg = `Transcription failed (${transcribeRes.status})`
-        try { const err = await transcribeRes.json(); msg = err.error || msg } catch {}
-        throw new Error(msg)
-      }
+      // Step 3: Fire-and-forget transcription — redirect immediately
+      // The meeting detail page already polls for status updates
+      fetch(`/api/meetings/${meeting.id}/transcribe`, { method: 'POST' }).catch(() => {})
 
       setStep('done')
       router.push(`/meetings/${meeting.id}`)

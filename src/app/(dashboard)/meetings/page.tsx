@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 
 type Meeting = {
@@ -64,11 +64,7 @@ export default function MeetingsPage() {
     fetch('/api/user/classes').then(res => res.ok ? res.json() : []).then(setUserClasses).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    fetchMeetings()
-  }, [typeFilter, classFilter])
-
-  async function fetchMeetings() {
+  const fetchMeetings = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams()
     if (typeFilter) params.set('type', typeFilter)
@@ -79,7 +75,11 @@ export default function MeetingsPage() {
     const data = await res.json()
     setMeetings(Array.isArray(data) ? data : [])
     setLoading(false)
-  }
+  }, [typeFilter, classFilter, search])
+
+  useEffect(() => {
+    fetchMeetings()
+  }, [fetchMeetings])
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()

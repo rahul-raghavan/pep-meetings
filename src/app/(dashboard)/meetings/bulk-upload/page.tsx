@@ -343,10 +343,22 @@ export default function BulkUploadPage() {
 
   async function retryFile(entry: FileEntry) {
     setIsProcessing(true)
-    updateFile(entry.id, { status: 'queued', error: undefined, meetingId: undefined })
-    const result = await processFile({ ...entry, status: 'queued', error: undefined, meetingId: undefined })
-    if (result.success) {
-      startPolling()
+    try {
+      // Keep existing meetingId if the meeting was already created (avoids duplicates)
+      updateFile(entry.id, { status: 'queued', error: undefined })
+      const result = await processFile({ ...entry, status: 'queued', error: undefined })
+      if (result.success) {
+        startPolling()
+      }
+    } finally {
+      // Always reset processing state so UI doesn't get stuck
+      const currentFiles = filesRef.current
+      const stillProcessing = currentFiles.some(f =>
+        f.id !== entry.id && (f.status === 'uploading' || f.status === 'transcribing')
+      )
+      if (!stillProcessing) {
+        setIsProcessing(false)
+      }
     }
   }
 

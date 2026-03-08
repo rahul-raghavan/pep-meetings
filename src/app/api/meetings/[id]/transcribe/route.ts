@@ -54,11 +54,23 @@ export async function POST(
     }
 
     // Split long audio into 45-minute chunks to avoid Voxtral 429 capacity errors
-    // Chunks are always re-encoded to MP3 by splitAudio, so use MP3 MIME/ext
     const audioBuffer = Buffer.from(await audioData.arrayBuffer())
-    const ext = 'mp3'
-    const mimeType = 'audio/mpeg'
     const chunks = await splitAudio(audioBuffer)
+
+    // Derive extension and MIME from storage path for small unsplit files.
+    // splitAudio re-encodes to MP3 when it actually splits, but passes through as-is
+    // for files under the size limit, so we need the original format.
+    const MIME_MAP: Record<string, string> = {
+      mp3: 'audio/mpeg', m4a: 'audio/mp4', wav: 'audio/wav',
+      webm: 'audio/webm', ogg: 'audio/ogg', opus: 'audio/opus',
+      aac: 'audio/aac', '3gp': 'audio/3gpp', mp4: 'audio/mp4',
+      mpeg: 'audio/mpeg', mpg: 'audio/mpeg', amr: 'audio/amr',
+    }
+    const storagePath = meeting.audio_storage_path as string
+    const storageExt = storagePath.split('.').pop()?.toLowerCase() || 'mp3'
+    // If splitAudio actually split (>1 chunk), chunks are re-encoded to MP3
+    const ext = chunks.length > 1 ? 'mp3' : storageExt
+    const mimeType = chunks.length > 1 ? 'audio/mpeg' : (MIME_MAP[storageExt] || 'audio/mpeg')
     console.log(`[transcribe] Meeting ${id}: ${chunks.length} chunk(s) to transcribe`)
 
     const MAX_ATTEMPTS = 5

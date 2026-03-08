@@ -48,9 +48,9 @@ export async function POST(
       .filter(s => s.text.includes(find))
       .map(s => ({ id: s.id, text: replaceAll(s.text) }))
 
-    for (const u of updates) {
-      await supabase.from('pep_transcript_segments').update({ text: u.text }).eq('id', u.id)
-    }
+    await Promise.all(
+      updates.map(u => supabase.from('pep_transcript_segments').update({ text: u.text }).eq('id', u.id))
+    )
     segmentCount = updates.length
   }
 
@@ -101,9 +101,9 @@ export async function POST(
       .filter(ai => ai.description.includes(find))
       .map(ai => ({ id: ai.id, description: replaceAll(ai.description) }))
 
-    for (const u of updates) {
-      await supabase.from('pep_action_items').update({ description: u.description }).eq('id', u.id)
-    }
+    await Promise.all(
+      updates.map(u => supabase.from('pep_action_items').update({ description: u.description, source: 'manual' }).eq('id', u.id))
+    )
     actionItemCount = updates.length
   }
 

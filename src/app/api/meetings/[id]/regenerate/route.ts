@@ -40,9 +40,21 @@ export async function POST(
     return NextResponse.json({ error: 'No transcript found for this meeting. Transcribe it first.' }, { status: 400 })
   }
 
+  // Load speaker display names so GPT-4o uses real names in the summary
+  const { data: participants } = await supabase
+    .from('pep_meeting_participants')
+    .select('speaker_label, display_name')
+    .eq('meeting_id', id)
+
+  const nameMap: Record<string, string> = {}
+  for (const p of participants || []) {
+    if (p.display_name) nameMap[p.speaker_label] = p.display_name
+  }
+
   // Convert DB rows to the Segment format analyzeMeeting expects
+  // Use display names when available so the LLM generates better summaries
   const segments = dbSegments.map(row => ({
-    speaker: row.speaker_label,
+    speaker: nameMap[row.speaker_label] || row.speaker_label,
     text: row.text,
     start: row.start_time,
     end: row.end_time,

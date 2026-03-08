@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 
 type ActionItem = {
@@ -24,11 +24,7 @@ export default function ActionItemsPage() {
   const [filter, setFilter] = useState<'open' | 'completed' | 'all'>('open')
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetchItems()
-  }, [filter])
-
-  async function fetchItems() {
+  const fetchItems = useCallback(async () => {
     setLoading(true)
     const params = new URLSearchParams()
     if (filter === 'open') params.set('completed', 'false')
@@ -39,7 +35,11 @@ export default function ActionItemsPage() {
     const data = await res.json()
     setItems(Array.isArray(data) ? data : [])
     setLoading(false)
-  }
+  }, [filter, search])
+
+  useEffect(() => {
+    fetchItems()
+  }, [fetchItems])
 
   async function toggleItem(item: ActionItem) {
     const res = await fetch(`/api/meetings/${item.meeting_id}/action-items`, {

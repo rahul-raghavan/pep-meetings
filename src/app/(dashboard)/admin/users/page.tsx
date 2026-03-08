@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 
 type ClassInfo = { id: string; name: string }
@@ -107,11 +107,7 @@ export default function AdminUsersPage() {
   const [newClassIds, setNewClassIds] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true)
     const [usersRes, classesRes, locationsRes, meRes] = await Promise.all([
       fetch('/api/admin/users'),
@@ -128,7 +124,11 @@ export default function AdminUsersPage() {
       setIsSuperAdmin(me.role === 'super_admin')
     }
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   function startEditing(u: AdminUser) {
     setEditingId(u.id)

@@ -39,6 +39,7 @@ export async function getCurrentUser(): Promise<MeetingUser | null> {
     .from('pep_meeting_users')
     .select('*')
     .eq('email', email)
+    .eq('is_active', true)
     .is('auth_id', null)
     .single()
 

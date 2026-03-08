@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ClassSelector } from '@/components/class-selector'
@@ -143,16 +143,9 @@ export default function RecordMeetingPage() {
         throw new Error(err.error || 'Failed to upload audio')
       }
 
-      // Step 3: Trigger transcription
-      setUploadProgress('Starting transcription (this may take a few minutes)...')
-      const transcribeRes = await fetch(
-        `/api/meetings/${meeting.id}/transcribe`,
-        { method: 'POST' }
-      )
-      if (!transcribeRes.ok) {
-        const err = await transcribeRes.json()
-        throw new Error(err.error || 'Transcription failed')
-      }
+      // Step 3: Fire-and-forget transcription — redirect immediately
+      // The meeting detail page already polls for status updates
+      fetch(`/api/meetings/${meeting.id}/transcribe`, { method: 'POST' }).catch(() => {})
 
       // Clear IndexedDB and redirect
       recorder.clearCurrentSession()
@@ -164,6 +157,19 @@ export default function RecordMeetingPage() {
       setPageState('preview')
     }
   }, [recorder, title, meetingType, meetingDate, notes, classIds, router])
+
+  // Memoize blob URL to avoid creating a new one every render (and leaking old ones)
+  const previewBlobUrl = useMemo(() => {
+    if (recorder.finalBlob) return URL.createObjectURL(recorder.finalBlob)
+    return null
+  }, [recorder.finalBlob])
+
+  // Revoke blob URL on cleanup
+  useEffect(() => {
+    return () => {
+      if (previewBlobUrl) URL.revokeObjectURL(previewBlobUrl)
+    }
+  }, [previewBlobUrl])
 
   // ── Uploading state ──
   if (pageState === 'uploading') {
@@ -184,8 +190,7 @@ export default function RecordMeetingPage() {
   }
 
   // ── Preview state (after stop) ──
-  if (pageState === 'preview' && recorder.finalBlob) {
-    const blobUrl = URL.createObjectURL(recorder.finalBlob)
+  if (pageState === 'preview' && recorder.finalBlob && previewBlobUrl) {
     return (
       <div className="max-w-xl mx-auto">
         <h1 className="text-2xl font-bold text-pep-gray mb-6">
@@ -208,7 +213,7 @@ export default function RecordMeetingPage() {
           </div>
 
           {/* Audio player */}
-          <audio controls src={blobUrl} className="w-full" />
+          <audio controls src={previewBlobUrl} className="w-full" />
 
           <div className="flex gap-3">
             <button
@@ -219,7 +224,6 @@ export default function RecordMeetingPage() {
             </button>
             <button
               onClick={() => {
-                URL.revokeObjectURL(blobUrl)
                 recorder.discardRecording()
                 setPageState('setup')
               }}
