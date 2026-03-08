@@ -4,14 +4,20 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
-// Use ffmpeg-static if available, otherwise fall back to system ffmpeg (e.g. on Railway)
-let ffmpegPath: string
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  ffmpegPath = require('ffmpeg-static')
-} catch {
-  ffmpegPath = 'ffmpeg'
+import { execFileSync } from 'child_process'
+
+// On deployed platforms (Railway/Linux), ffmpeg-static's bundled binary often
+// doesn't work. Prefer system ffmpeg if available, fall back to ffmpeg-static.
+function getFfmpegPath(): string {
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' })
+    return 'ffmpeg'
+  } catch {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('ffmpeg-static')
+  }
 }
+const ffmpegPath = getFfmpegPath()
 
 const COMPRESSION_THRESHOLD = 10 * 1024 * 1024 // 10MB
 const SUPABASE_FILE_LIMIT = 50 * 1024 * 1024 // 50MB
