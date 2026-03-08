@@ -4,8 +4,14 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ffmpegPath: string = require('ffmpeg-static')
+// Use ffmpeg-static if available, otherwise fall back to system ffmpeg (e.g. on Railway)
+let ffmpegPath: string
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ffmpegPath = require('ffmpeg-static')
+} catch {
+  ffmpegPath = 'ffmpeg'
+}
 
 const CHUNK_DURATION_SEC = 45 * 60 // 45 minutes
 

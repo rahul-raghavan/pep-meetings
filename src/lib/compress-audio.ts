@@ -4,9 +4,14 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 
-// ffmpeg-static exports the path to the platform-specific ffmpeg binary
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const ffmpegPath: string = require('ffmpeg-static')
+// Use ffmpeg-static if available, otherwise fall back to system ffmpeg (e.g. on Railway)
+let ffmpegPath: string
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ffmpegPath = require('ffmpeg-static')
+} catch {
+  ffmpegPath = 'ffmpeg'
+}
 
 const COMPRESSION_THRESHOLD = 10 * 1024 * 1024 // 10MB
 const SUPABASE_FILE_LIMIT = 50 * 1024 * 1024 // 50MB
