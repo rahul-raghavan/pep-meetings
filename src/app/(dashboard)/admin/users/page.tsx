@@ -258,9 +258,8 @@ export default function AdminUsersPage() {
         <div className="bg-red-50 text-red-700 rounded px-4 py-3 text-sm mb-4">{error}</div>
       )}
 
-      {/* Create user (super_admin only) */}
-      {isSuperAdmin && (
-        <div className="mb-6">
+      {/* Create user */}
+      <div className="mb-6">
           {!showCreateForm ? (
             <button
               onClick={() => setShowCreateForm(true)}
@@ -292,6 +291,7 @@ export default function AdminUsersPage() {
                   />
                 </div>
 
+                {isSuperAdmin && (
                 <div>
                   <label className="block text-sm font-medium text-pep-gray mb-1">Role</label>
                   <select
@@ -304,6 +304,7 @@ export default function AdminUsersPage() {
                     <option value="super_admin">Super Admin</option>
                   </select>
                 </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-pep-gray mb-1">Assign to classes</label>
@@ -334,8 +335,7 @@ export default function AdminUsersPage() {
               </form>
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       <div className="space-y-2">
         {users.map(u => {
@@ -373,12 +373,15 @@ export default function AdminUsersPage() {
                 <div className="flex items-center gap-2 shrink-0 ml-3">
                   {!isEditing ? (
                     <>
+                      {/* Admins can only edit regular users, not other admins/super_admins */}
+                      {(isSuperAdmin || u.role === 'user') && (
                       <button
                         onClick={() => startEditing(u)}
                         className="text-sm text-pep-coral hover:text-pep-coralhover cursor-pointer"
                       >
                         Edit
                       </button>
+                      )}
                       {isSuperAdmin && (
                         <button
                           onClick={() => toggleActive(u.id, u.is_active)}

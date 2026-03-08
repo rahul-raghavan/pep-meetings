@@ -94,8 +94,8 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const user = await getCurrentUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (user.role !== 'super_admin') {
-    return NextResponse.json({ error: 'Only super admins can create users' }, { status: 403 })
+  if (user.role !== 'super_admin' && user.role !== 'admin') {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
   }
 
   const { name, email, role, campus_id, class_ids } = await request.json()
@@ -103,12 +103,38 @@ export async function POST(request: NextRequest) {
   if (!name?.trim()) return NextResponse.json({ error: 'Name is required' }, { status: 400 })
   if (!email?.trim()) return NextResponse.json({ error: 'Email is required' }, { status: 400 })
 
+  // Admins can only create regular users
+  if (user.role === 'admin' && role && role !== 'user') {
+    return NextResponse.json({ error: 'Admins can only create regular users' }, { status: 403 })
+  }
+
   const validRoles = ['user', 'admin', 'super_admin']
   if (role && !validRoles.includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
   const db = createServiceClient()
+
+  // Admins can only assign classes in their own locations
+  if (user.role === 'admin' && Array.isArray(class_ids) && class_ids.length > 0) {
+    const { data: adminClasses } = await db
+      .from('pep_user_classes')
+      .select('pep_classes(campus_id)')
+      .eq('user_id', user.id)
+
+    const adminCampusIds = new Set(
+      (adminClasses || [])
+        .map(uc => (uc.pep_classes as unknown as Record<string, unknown>)?.campus_id as string)
+        .filter(Boolean)
+    )
+
+    for (const cid of class_ids) {
+      const { data: cls } = await db.from('pep_classes').select('campus_id').eq('id', cid).single()
+      if (!cls || !adminCampusIds.has(cls.campus_id)) {
+        return NextResponse.json({ error: 'You can only assign classes in your own locations' }, { status: 403 })
+      }
+    }
+  }
 
   // Check if email already exists
   const { data: existing } = await db
