@@ -3,9 +3,15 @@ import { createClient, createServiceClient } from '@/lib/supabase-server'
 import { isAllowedDomain } from '@/lib/rbac'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const url = new URL(request.url)
+  const searchParams = url.searchParams
   const code = searchParams.get('code')
   const error = searchParams.get('error')
+
+  // Use forwarded host (set by reverse proxies like Railway) to get the real public origin
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
+  const origin = forwardedHost ? `${forwardedProto}://${forwardedHost}` : url.origin
 
   if (error) {
     return NextResponse.redirect(`${origin}/login?error=${error}`)
