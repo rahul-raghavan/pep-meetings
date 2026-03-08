@@ -506,7 +506,7 @@ export default function BulkUploadPage() {
               ? 'Drag and drop audio files here'
               : 'Drop more files or click to add'}
           </p>
-          <p className="text-sm text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, Opus, AAC, MPEG, or 3GP</p>
+          <p className="text-sm text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, Opus, AAC, MPEG, or 3GP (max 25 MB each)</p>
           <input
             ref={fileInputRef}
             type="file"

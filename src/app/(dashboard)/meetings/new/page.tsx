@@ -41,8 +41,9 @@ export default function NewMeetingPage() {
         }),
       })
       if (!createRes.ok) {
-        const err = await createRes.json()
-        throw new Error(err.error || 'Failed to create meeting')
+        let msg = `Failed to create meeting (${createRes.status})`
+        try { const err = await createRes.json(); msg = err.error || msg } catch {}
+        throw new Error(msg)
       }
       const meeting = await createRes.json()
 
@@ -56,8 +57,9 @@ export default function NewMeetingPage() {
         body: formData,
       })
       if (!uploadRes.ok) {
-        const err = await uploadRes.json()
-        throw new Error(err.error || 'Failed to upload audio')
+        let msg = `Failed to upload audio (${uploadRes.status})`
+        try { const err = await uploadRes.json(); msg = err.error || msg } catch {}
+        throw new Error(msg)
       }
 
       // Step 3: Trigger transcription
@@ -66,8 +68,9 @@ export default function NewMeetingPage() {
         method: 'POST',
       })
       if (!transcribeRes.ok) {
-        const err = await transcribeRes.json()
-        throw new Error(err.error || 'Transcription failed')
+        let msg = `Transcription failed (${transcribeRes.status})`
+        try { const err = await transcribeRes.json(); msg = err.error || msg } catch {}
+        throw new Error(msg)
       }
 
       setStep('done')
@@ -177,7 +180,7 @@ export default function NewMeetingPage() {
             ) : (
               <div>
                 <p className="text-pep-gray">Click to select an audio file</p>
-                <p className="text-xs text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, AAC, MPEG, or 3GP</p>
+                <p className="text-xs text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, AAC, MPEG, or 3GP (max 25 MB)</p>
               </div>
             )}
           </div>
