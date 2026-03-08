@@ -18,25 +18,45 @@ export async function GET() {
     .order('name')
 
   // Admins only see users in their location(s)
+  // Users may not have campus_id set directly — find them through class assignments
   if (user.role === 'admin') {
+    // Get the campuses this admin can see
+    let campusIds: string[] = []
     if (user.campus_id) {
-      query = query.eq('campus_id', user.campus_id)
+      campusIds = [user.campus_id]
     } else {
-      // Admin without a campus_id — find campuses from their class assignments
       const { data: userClasses } = await db
         .from('pep_user_classes')
         .select('pep_classes(campus_id)')
         .eq('user_id', user.id)
 
-      const campusIds = [...new Set(
+      campusIds = [...new Set(
         (userClasses || [])
           .map(uc => (uc.pep_classes as unknown as Record<string, unknown>)?.campus_id as string)
           .filter(Boolean)
       )]
-
-      if (campusIds.length === 0) return NextResponse.json([])
-      query = query.in('campus_id', campusIds)
     }
+
+    if (campusIds.length === 0) return NextResponse.json([])
+
+    // Find all classes in those campuses, then all users in those classes
+    const { data: classesInCampuses } = await db
+      .from('pep_classes')
+      .select('id')
+      .in('campus_id', campusIds)
+
+    const classIds = (classesInCampuses || []).map(c => c.id)
+    if (classIds.length === 0) return NextResponse.json([])
+
+    const { data: userClassRows } = await db
+      .from('pep_user_classes')
+      .select('user_id')
+      .in('class_id', classIds)
+
+    const visibleUserIds = [...new Set((userClassRows || []).map(r => r.user_id))]
+    if (visibleUserIds.length === 0) return NextResponse.json([])
+
+    query = query.in('id', visibleUserIds)
   }
 
   const { data, error } = await query
