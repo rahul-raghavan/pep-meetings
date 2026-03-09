@@ -388,7 +388,34 @@ export default function MeetingsPage() {
                           </div>
                         </div>
                       ) : meeting.status === 'processing' ? (
-                        <p className="text-sm text-blue-600">Transcription in progress...</p>
+                        (() => {
+                          const staleMinutes = 15
+                          const createdAt = new Date(meeting.created_at).getTime()
+                          const isStale = Date.now() - createdAt > staleMinutes * 60 * 1000
+                          return isStale ? (
+                            <div className="space-y-2">
+                              <p className="text-sm text-amber-700">Transcription appears to be stuck. You can retry it.</p>
+                              <div className="flex items-center gap-3">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
+                                  className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                >
+                                  Retry Transcription
+                                </button>
+                                {meeting.can_edit && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                    className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-blue-600">Transcription in progress...</p>
+                          )
+                        })()
                       ) : meeting.status === 'failed' ? (
                         <div className="space-y-2">
                           <p className="text-sm text-red-600">Transcription failed.</p>
