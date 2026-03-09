@@ -173,7 +173,7 @@ export default function NewMeetingPage() {
             ) : (
               <div>
                 <p className="text-pep-gray">Click to select an audio file</p>
-                <p className="text-xs text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, AAC, MPEG, or 3GP (max 25 MB)</p>
+                <p className="text-xs text-pep-gray mt-1">MP3, M4A, WAV, WebM, OGG, AAC, MPEG, or 3GP (max 50 MB)</p>
               </div>
             )}
           </div>

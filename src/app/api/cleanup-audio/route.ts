@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     .select('id, audio_storage_path')
     .not('audio_storage_path', 'is', null)
     .lt('created_at', cutoff)
-    .in('status', ['completed', 'failed'])
+    .eq('status', 'completed')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

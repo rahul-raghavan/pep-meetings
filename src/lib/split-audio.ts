@@ -121,9 +121,14 @@ export async function splitAudio(inputBuffer: Buffer): Promise<AudioChunk[]> {
     const durationSec = await getAudioDuration(inputPath)
     console.log(`[split-audio] Duration: ${(durationSec / 60).toFixed(1)} minutes`)
 
-    // No splitting needed for short audio
+    // No splitting needed for short audio, but still compress to get under 25MB
     if (durationSec <= CHUNK_DURATION_SEC) {
-      return [{ buffer: inputBuffer, startOffsetSec: 0 }]
+      const compressedPath = join(tmpdir(), `pep-split-compressed-${id}.mp3`)
+      chunkPaths.push(compressedPath)
+      await extractChunk(inputPath, compressedPath, 0, durationSec)
+      const compressedBuffer = await readFile(compressedPath)
+      console.log(`[split-audio] Compressed ${(inputBuffer.length / 1024 / 1024).toFixed(1)}MB → ${(compressedBuffer.length / 1024 / 1024).toFixed(1)}MB`)
+      return [{ buffer: compressedBuffer, startOffsetSec: 0 }]
     }
 
     const chunkCount = Math.ceil(durationSec / CHUNK_DURATION_SEC)
