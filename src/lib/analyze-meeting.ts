@@ -78,8 +78,8 @@ Guidelines for ACTION ITEMS:
 
   const rawContent = response.choices[0]?.message?.content || ''
 
-  // Strip markdown fences if present
-  const jsonStr = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  // Strip markdown fences if present (handle leading/trailing whitespace and newlines)
+  const jsonStr = rawContent.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
 
   try {
     const parsed = JSON.parse(jsonStr)
@@ -127,17 +127,21 @@ Guidelines for ACTION ITEMS:
       const { error: insertError } = await supabase.from('pep_action_items').insert(items)
       if (insertError) throw new Error(`Failed to save action items: ${insertError.message}`)
     }
-  } catch {
-    // Save raw response even if parsing fails
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`[analyze-meeting] Failed for meeting ${meetingId}: ${errorMessage}`)
+    console.error(`[analyze-meeting] Raw LLM response (first 500 chars): ${rawContent.slice(0, 500)}`)
+
+    // Save raw response so we can debug later
     await supabase
       .from('pep_meeting_summaries')
       .upsert({
         meeting_id: meetingId,
-        summary: 'Analysis failed. Raw response saved.',
+        summary: `Analysis failed: ${errorMessage}`,
         key_decisions: [],
         topic_sections: [],
         overall_sentiment: null,
-        raw_llm_response: { raw: rawContent, error: 'JSON parse failed' },
+        raw_llm_response: { raw: rawContent, error: errorMessage },
       }, { onConflict: 'meeting_id' })
   }
 }
