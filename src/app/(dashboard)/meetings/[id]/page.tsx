@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, use, useMemo } from 'react'
+import { useEffect, useState, useRef, use, useMemo } from 'react'
 import Link from 'next/link'
 
 type Participant = {
@@ -125,9 +125,39 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   const [replacing, setReplacing] = useState(false)
   const [replaceResult, setReplaceResult] = useState<string | null>(null)
 
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   useEffect(() => {
     fetchMeeting()
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
   }, [id])
+
+  // Poll every 5s while meeting is processing, stop once it completes/fails
+  useEffect(() => {
+    if (meeting?.status === 'processing') {
+      if (!pollingRef.current) {
+        pollingRef.current = setInterval(async () => {
+          const res = await fetch(`/api/meetings/${id}`)
+          if (res.ok) {
+            const data = await res.json()
+            setMeeting(data)
+            initSpeakerDrafts(data.participants)
+            if (data.status !== 'processing') {
+              if (pollingRef.current) clearInterval(pollingRef.current)
+              pollingRef.current = null
+            }
+          }
+        }, 5000)
+      }
+    } else {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current)
+        pollingRef.current = null
+      }
+    }
+  }, [meeting?.status, id])
 
   async function fetchMeeting() {
     setLoading(true)
