@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 type Meeting = {
   id: string
@@ -50,6 +51,7 @@ const SENTIMENT_STYLES: Record<string, string> = {
 }
 
 export default function MeetingsPage() {
+  const router = useRouter()
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [typeFilter, setTypeFilter] = useState('')
@@ -100,19 +102,10 @@ export default function MeetingsPage() {
     setEditDraft({ title: '', meeting_type: '', meeting_date: '' })
   }
 
-  async function retryTranscription(meetingId: string) {
+  function retryTranscription(meetingId: string) {
     setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'processing' } : m))
-    try {
-      const res = await fetch(`/api/meetings/${meetingId}/transcribe`, { method: 'POST' })
-      if (res.ok) {
-        setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'completed' } : m))
-        fetchMeetings()
-      } else {
-        setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'failed' } : m))
-      }
-    } catch {
-      setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'failed' } : m))
-    }
+    fetch(`/api/meetings/${meetingId}/transcribe`, { method: 'POST' }).catch(() => {})
+    router.push(`/meetings/${meetingId}`)
   }
 
   async function deleteMeeting(meetingId: string) {
