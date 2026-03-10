@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { assertMeetingAccess, assertMeetingEdit, AccessError } from '@/lib/rbac'
 import { analyzeMeeting } from '@/lib/analyze-meeting'
 
-export const maxDuration = 120 // 2 minutes — no audio processing, just GPT call
+export const maxDuration = 300 // 5 minutes — GPT thick summary + Claude deep analysis
 
 export async function POST(
   request: NextRequest,
@@ -40,7 +40,14 @@ export async function POST(
     return NextResponse.json({ error: 'No transcript found for this meeting. Transcribe it first.' }, { status: 400 })
   }
 
-  // Load speaker display names so GPT-4o uses real names in the summary
+  // Load meeting type for deep analysis
+  const { data: meeting } = await supabase
+    .from('pep_meetings')
+    .select('meeting_type')
+    .eq('id', id)
+    .single()
+
+  // Load speaker display names so the LLM uses real names in the summary
   const { data: participants } = await supabase
     .from('pep_meeting_participants')
     .select('speaker_label, display_name')
@@ -61,7 +68,7 @@ export async function POST(
   }))
 
   try {
-    await analyzeMeeting(id, segments, supabase)
+    await analyzeMeeting(id, segments, supabase, meeting?.meeting_type)
     return NextResponse.json({ success: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

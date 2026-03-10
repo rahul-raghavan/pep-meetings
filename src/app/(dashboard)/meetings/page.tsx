@@ -34,6 +34,9 @@ const TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
+// Display order for category groups
+const TYPE_ORDER = ['admission', 'parent_teacher', 'training', 'hr', 'internal', 'other']
+
 const STATUS_COLORS: Record<string, string> = {
   uploading: 'bg-yellow-100 text-yellow-800',
   processing: 'bg-blue-100 text-blue-800',
@@ -60,7 +63,7 @@ export default function MeetingsPage() {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState({ title: '', meeting_type: '', meeting_date: '' })
+  const [editDraft, setEditDraft] = useState({ title: '', meeting_type: '', meeting_date: '', class_ids: [] as string[] })
 
   useEffect(() => {
     fetch('/api/user/classes').then(res => res.ok ? res.json() : []).then(setUserClasses).catch(() => {})
@@ -94,12 +97,12 @@ export default function MeetingsPage() {
 
   function startEditing(meeting: Meeting) {
     setEditingId(meeting.id)
-    setEditDraft({ title: meeting.title, meeting_type: meeting.meeting_type, meeting_date: meeting.meeting_date })
+    setEditDraft({ title: meeting.title, meeting_type: meeting.meeting_type, meeting_date: meeting.meeting_date, class_ids: meeting.classes.map(c => c.id) })
   }
 
   function cancelEditing() {
     setEditingId(null)
-    setEditDraft({ title: '', meeting_type: '', meeting_date: '' })
+    setEditDraft({ title: '', meeting_type: '', meeting_date: '', class_ids: [] })
   }
 
   function retryTranscription(meetingId: string) {
@@ -126,14 +129,19 @@ export default function MeetingsPage() {
         title: editDraft.title.trim(),
         meeting_type: editDraft.meeting_type,
         meeting_date: editDraft.meeting_date,
+        class_ids: editDraft.class_ids,
       }),
     })
     if (res.ok) {
+      const updatedClasses = userClasses
+        .filter(c => editDraft.class_ids.includes(c.id))
+        .map(c => ({ id: c.id, name: c.name }))
       setMeetings(prev => prev.map(m => m.id === meetingId ? {
         ...m,
         title: editDraft.title.trim(),
         meeting_type: editDraft.meeting_type,
         meeting_date: editDraft.meeting_date,
+        classes: updatedClasses,
       } : m))
     }
     cancelEditing()
@@ -227,241 +235,282 @@ export default function MeetingsPage() {
           <p className="text-pep-gray">No meetings found. Create your first meeting to get started.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {meetings.map((meeting) => {
-            const isExpanded = expandedId === meeting.id
-            const isEditing = editingId === meeting.id
+        <div className="space-y-8">
+          {(() => {
+            // Group meetings by type
+            const grouped: Record<string, Meeting[]> = {}
+            for (const m of meetings) {
+              const key = m.meeting_type || 'other'
+              if (!grouped[key]) grouped[key] = []
+              grouped[key].push(m)
+            }
 
-            return (
-              <div
-                key={meeting.id}
-                className={`bg-pep-card rounded shadow-sm overflow-hidden transition-shadow hover:shadow-md ${meeting.needs_attention ? 'border-l-4 border-l-red-400' : ''}`}
-              >
-                {/* Card header — clickable to expand */}
-                <div
-                  onClick={() => { if (!isEditing) toggleExpand(meeting.id) }}
-                  className={`p-4 ${isEditing ? '' : 'cursor-pointer'}`}
-                >
-                  {isEditing ? (
-                    <div onClick={(e) => e.stopPropagation()} className="space-y-3">
-                      <input
-                        type="text"
-                        value={editDraft.title}
-                        onChange={(e) => setEditDraft(d => ({ ...d, title: e.target.value }))}
-                        autoFocus
-                        onKeyDown={(e) => { if (e.key === 'Escape') cancelEditing() }}
-                        placeholder="Meeting title"
-                        className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
-                      />
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <select
-                          value={editDraft.meeting_type}
-                          onChange={(e) => setEditDraft(d => ({ ...d, meeting_type: e.target.value }))}
-                          className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20 cursor-pointer"
-                        >
-                          <option value="parent_teacher">Parent-Teacher</option>
-                          <option value="admission">Admission</option>
-                          <option value="training">Training</option>
-                          <option value="hr">HR</option>
-                          <option value="internal">Internal</option>
-                          <option value="other">Other</option>
-                        </select>
-                        <input
-                          type="date"
-                          value={editDraft.meeting_date}
-                          onChange={(e) => setEditDraft(d => ({ ...d, meeting_date: e.target.value }))}
-                          className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
-                        />
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={cancelEditing} className="text-sm text-pep-gray hover:underline cursor-pointer">Cancel</button>
-                        <button onClick={() => saveEdits(meeting.id)} className="text-sm bg-pep-blue text-white px-4 py-1.5 rounded uppercase tracking-wider hover:bg-pep-dark transition-colors cursor-pointer">Save</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-pep-gray truncate">{meeting.title}</h3>
-                          {meeting.can_edit && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); startEditing(meeting) }}
-                              className="text-pep-gray hover:text-pep-blue transition-colors shrink-0 cursor-pointer"
-                              title="Edit"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                              </svg>
-                            </button>
-                          )}
-                          {meeting.needs_attention && (
-                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-red-100 text-red-700 shrink-0">
-                              Needs Attention
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-pep-gray">
-                          <span>{new Date(meeting.meeting_date).toLocaleDateString()}</span>
-                          <span className="text-gray-300 hidden sm:inline">|</span>
-                          <span>{TYPE_LABELS[meeting.meeting_type] || meeting.meeting_type}</span>
-                          <span className="text-gray-300 hidden sm:inline">|</span>
-                          <span>{meeting.recorded_by_name}</span>
-                          {meeting.classes.length > 0 && (
-                            <>
-                              <span className="text-gray-300 hidden sm:inline">|</span>
-                              <span className="text-pep-blue">{meeting.classes.map(c => c.name).join(', ')}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded ${STATUS_COLORS[meeting.status] || 'bg-gray-100 text-gray-800'}`}>
-                          {meeting.status}
-                        </span>
-                        <svg
-                          className={`w-4 h-4 text-pep-gray transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </div>
-                  )}
-                </div>
+            // Render groups in defined order, skip empty ones
+            return TYPE_ORDER
+              .filter(type => grouped[type] && grouped[type].length > 0)
+              .map(type => (
+                <div key={type}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <h2 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+                      {TYPE_LABELS[type] || type}
+                    </h2>
+                    <span className="text-xs text-pep-gray bg-gray-100 px-2 py-0.5 rounded">
+                      {grouped[type].length}
+                    </span>
+                    <div className="flex-1 border-t border-gray-200" />
+                  </div>
+                  <div className="space-y-3">
+                    {grouped[type].map((meeting) => {
+                      const isExpanded = expandedId === meeting.id
+                      const isEditing = editingId === meeting.id
 
-                {/* Expanded section — summary preview */}
-                {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-gray-100">
-                    <div className="pt-3">
-                      {meeting.summary_text ? (
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="text-sm text-gray-700">{meeting.summary_text}</p>
-                            {meeting.overall_sentiment && (
-                              <span className={`text-xs font-medium px-2.5 py-1 rounded shrink-0 ${SENTIMENT_STYLES[meeting.overall_sentiment] || 'bg-gray-100 text-gray-700'}`}>
-                                {meeting.overall_sentiment}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <Link
-                              href={`/meetings/${meeting.id}`}
-                              className="inline-block text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
-                            >
-                              View full meeting &rarr;
-                            </Link>
-                            {meeting.can_edit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : meeting.status === 'completed' ? (
-                        <div className="space-y-2">
-                          <p className="text-sm text-pep-gray">No summary available for this meeting.</p>
-                          <div className="flex items-center gap-3">
-                            <Link
-                              href={`/meetings/${meeting.id}`}
-                              className="inline-block text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
-                            >
-                              View full meeting &rarr;
-                            </Link>
-                            {meeting.can_edit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ) : meeting.status === 'processing' ? (
-                        (() => {
-                          const staleMinutes = 15
-                          const createdAt = new Date(meeting.created_at).getTime()
-                          const isStale = Date.now() - createdAt > staleMinutes * 60 * 1000
-                          return isStale ? (
-                            <div className="space-y-2">
-                              <p className="text-sm text-amber-700">Transcription appears to be stuck. You can retry it.</p>
-                              <div className="flex items-center gap-3">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
-                                  className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                                >
-                                  Retry Transcription
-                                </button>
-                                {meeting.can_edit && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                    className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                      return (
+                        <div
+                          key={meeting.id}
+                          className={`bg-pep-card rounded shadow-sm overflow-hidden transition-shadow hover:shadow-md ${meeting.needs_attention ? 'border-l-4 border-l-red-400' : ''}`}
+                        >
+                          {/* Card header — clickable to expand */}
+                          <div
+                            onClick={() => { if (!isEditing) toggleExpand(meeting.id) }}
+                            className={`p-4 ${isEditing ? '' : 'cursor-pointer'}`}
+                          >
+                            {isEditing ? (
+                              <div onClick={(e) => e.stopPropagation()} className="space-y-3">
+                                <input
+                                  type="text"
+                                  value={editDraft.title}
+                                  onChange={(e) => setEditDraft(d => ({ ...d, title: e.target.value }))}
+                                  autoFocus
+                                  onKeyDown={(e) => { if (e.key === 'Escape') cancelEditing() }}
+                                  placeholder="Meeting title"
+                                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
+                                />
+                                <div className="flex flex-col sm:flex-row gap-3">
+                                  <select
+                                    value={editDraft.meeting_type}
+                                    onChange={(e) => setEditDraft(d => ({ ...d, meeting_type: e.target.value }))}
+                                    className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20 cursor-pointer"
                                   >
-                                    Delete
-                                  </button>
+                                    <option value="parent_teacher">Parent-Teacher</option>
+                                    <option value="admission">Admission</option>
+                                    <option value="training">Training</option>
+                                    <option value="hr">HR</option>
+                                    <option value="internal">Internal</option>
+                                    <option value="other">Other</option>
+                                  </select>
+                                  <input
+                                    type="date"
+                                    value={editDraft.meeting_date}
+                                    onChange={(e) => setEditDraft(d => ({ ...d, meeting_date: e.target.value }))}
+                                    className="flex-1 border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
+                                  />
+                                </div>
+                                {userClasses.length > 0 && (
+                                  <div>
+                                    <label className="text-xs text-pep-gray mb-1 block">Classroom</label>
+                                    <select
+                                      value={editDraft.class_ids[0] || ''}
+                                      onChange={(e) => setEditDraft(d => ({ ...d, class_ids: e.target.value ? [e.target.value] : [] }))}
+                                      className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20 cursor-pointer"
+                                    >
+                                      <option value="">No classroom</option>
+                                      {userClasses.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name} ({c.campus_name})</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )}
+                                <div className="flex gap-2 justify-end">
+                                  <button onClick={cancelEditing} className="text-sm text-pep-gray hover:underline cursor-pointer">Cancel</button>
+                                  <button onClick={() => saveEdits(meeting.id)} className="text-sm bg-pep-blue text-white px-4 py-1.5 rounded uppercase tracking-wider hover:bg-pep-dark transition-colors cursor-pointer">Save</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="font-semibold text-pep-gray truncate">{meeting.title}</h3>
+                                    {meeting.can_edit && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); startEditing(meeting) }}
+                                        className="text-pep-gray hover:text-pep-blue transition-colors shrink-0 cursor-pointer"
+                                        title="Edit"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    {meeting.needs_attention && (
+                                      <span className="text-xs font-medium px-2 py-0.5 rounded bg-red-100 text-red-700 shrink-0">
+                                        Needs Attention
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-pep-gray">
+                                    <span>{new Date(meeting.meeting_date).toLocaleDateString()}</span>
+                                    <span className="text-gray-300 hidden sm:inline">|</span>
+                                    <span>{meeting.recorded_by_name}</span>
+                                    {meeting.classes.length > 0 && (
+                                      <>
+                                        <span className="text-gray-300 hidden sm:inline">|</span>
+                                        <span className="text-pep-blue">{meeting.classes.map(c => c.name).join(', ')}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0 ml-3">
+                                  <span className={`text-xs font-medium px-2.5 py-1 rounded ${STATUS_COLORS[meeting.status] || 'bg-gray-100 text-gray-800'}`}>
+                                    {meeting.status}
+                                  </span>
+                                  <svg
+                                    className={`w-4 h-4 text-pep-gray transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Expanded section — summary preview */}
+                          {isExpanded && (
+                            <div className="px-4 pb-4 border-t border-gray-100">
+                              <div className="pt-3">
+                                {meeting.summary_text ? (
+                                  <div className="space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <p className="text-sm text-gray-700">{meeting.summary_text}</p>
+                                      {meeting.overall_sentiment && (
+                                        <span className={`text-xs font-medium px-2.5 py-1 rounded shrink-0 ${SENTIMENT_STYLES[meeting.overall_sentiment] || 'bg-gray-100 text-gray-700'}`}>
+                                          {meeting.overall_sentiment}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <Link
+                                        href={`/meetings/${meeting.id}`}
+                                        className="inline-block text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
+                                      >
+                                        View full meeting &rarr;
+                                      </Link>
+                                      {meeting.can_edit && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                          className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : meeting.status === 'completed' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-pep-gray">No summary available for this meeting.</p>
+                                    <div className="flex items-center gap-3">
+                                      <Link
+                                        href={`/meetings/${meeting.id}`}
+                                        className="inline-block text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
+                                      >
+                                        View full meeting &rarr;
+                                      </Link>
+                                      {meeting.can_edit && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                          className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : meeting.status === 'processing' ? (
+                                  (() => {
+                                    const staleMinutes = 15
+                                    const createdAt = new Date(meeting.created_at).getTime()
+                                    const isStale = Date.now() - createdAt > staleMinutes * 60 * 1000
+                                    return isStale ? (
+                                      <div className="space-y-2">
+                                        <p className="text-sm text-amber-700">Transcription appears to be stuck. You can retry it.</p>
+                                        <div className="flex items-center gap-3">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
+                                            className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                          >
+                                            Retry Transcription
+                                          </button>
+                                          {meeting.can_edit && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                              className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                            >
+                                              Delete
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-blue-600">Transcription in progress...</p>
+                                    )
+                                  })()
+                                ) : meeting.status === 'failed' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-red-600">Transcription failed.</p>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
+                                        className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                      >
+                                        Retry Transcription
+                                      </button>
+                                      <Link
+                                        href={`/meetings/${meeting.id}`}
+                                        className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
+                                      >
+                                        View details &rarr;
+                                      </Link>
+                                      {meeting.can_edit && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                          className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-pep-gray">Waiting for upload...</p>
+                                    <div className="flex items-center gap-3">
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
+                                        className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                      >
+                                        Retry Transcription
+                                      </button>
+                                      {meeting.can_edit && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
+                                          className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
+                                        >
+                                          Delete
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             </div>
-                          ) : (
-                            <p className="text-sm text-blue-600">Transcription in progress...</p>
-                          )
-                        })()
-                      ) : meeting.status === 'failed' ? (
-                        <div className="space-y-2">
-                          <p className="text-sm text-red-600">Transcription failed.</p>
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
-                              className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                            >
-                              Retry Transcription
-                            </button>
-                            <Link
-                              href={`/meetings/${meeting.id}`}
-                              className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
-                            >
-                              View details &rarr;
-                            </Link>
-                            {meeting.can_edit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <p className="text-sm text-pep-gray">Waiting for upload...</p>
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
-                              className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                            >
-                              Retry Transcription
-                            </button>
-                            {meeting.can_edit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                      )
+                    })}
                   </div>
-                )}
-              </div>
-            )
-          })}
+                </div>
+              ))
+          })()}
         </div>
       )}
     </div>

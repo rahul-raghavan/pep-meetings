@@ -26,6 +26,7 @@ type ActionItem = {
   due_date: string | null
   is_completed: boolean
   source_segment_index: number | null
+  category: string | null
 }
 
 type TopicSection = {
@@ -34,11 +35,64 @@ type TopicSection = {
   sentiment: string
 }
 
+type KeyQuote = {
+  speaker: string
+  quote: string
+  why_it_matters: string
+}
+
+type AdmissionAnalysis = {
+  overall_read: string
+  parent_concerns: { concern: string; detail: string; priority: number }[]
+  school_assessment: {
+    strengths: string[]
+    weaknesses: string[]
+    missed_opportunities: string[]
+  }
+  red_flags: string[]
+  green_flags: string[]
+  alignment_rating: {
+    score: number
+    reasoning: string
+    why_not_higher: string
+    why_not_lower: string
+  }
+  key_quotes: KeyQuote[]
+  suggestions: string[]
+}
+
+type ParentTeacherAnalysis = {
+  overall_read: string
+  parent_communication: {
+    concerns: { concern: string; detail: string }[]
+    celebrations: { item: string; detail: string }[]
+    questions_requests: string[]
+    unspoken_signals: string[]
+  }
+  teacher_assessment: {
+    strengths: string[]
+    weaknesses: string[]
+    missed_opportunities: string[]
+  }
+  alignment_rating: {
+    score: number
+    reasoning: string
+    why_not_higher: string
+    why_not_lower: string
+  }
+  key_quotes: KeyQuote[]
+  followup_email: string
+  suggestions: string[]
+}
+
+type Analysis = AdmissionAnalysis | ParentTeacherAnalysis | null
+
 type Summary = {
   summary: string
   key_decisions: string[]
   topic_sections?: TopicSection[]
   overall_sentiment?: string
+  analysis?: Analysis
 } | null
 
 type Meeting = {
@@ -101,6 +155,383 @@ const TYPE_LABELS: Record<string, string> = {
   other: 'Other',
 }
 
+function AlignmentBadge({ score }: { score: number }) {
+  const colors =
+    score <= 2
+      ? 'bg-red-100 text-red-800 border-red-200'
+      : score === 3
+        ? 'bg-amber-100 text-amber-800 border-amber-200'
+        : 'bg-green-100 text-green-800 border-green-200'
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded border ${colors}`}>
+      {score}/5
+    </span>
+  )
+}
+
+function AnalysisSection({ analysis, meetingType }: { analysis: Analysis; meetingType: string }) {
+  if (!analysis) return null
+
+  const isAdmission = meetingType === 'admission'
+  const isPT = meetingType === 'parent_teacher'
+  const [emailCopied, setEmailCopied] = useState(false)
+
+  if (!isAdmission && !isPT) return null
+
+  return (
+    <div className="space-y-4 mt-2">
+      <div className="border-t border-gray-200 pt-4">
+        <h2 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-4">
+          Deep Analysis
+        </h2>
+      </div>
+
+      {/* Overall Read */}
+      <div className="bg-pep-card rounded shadow-sm p-5">
+        <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-2">
+          Overall Read
+        </h3>
+        <p className="text-sm text-gray-700">{analysis.overall_read}</p>
+      </div>
+
+      {/* PT: Alignment Rating — shown early for parent-teacher */}
+      {isPT && analysis.alignment_rating && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <div className="flex items-start justify-between mb-3">
+            <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+              Parent-School Alignment
+            </h3>
+            <AlignmentBadge score={analysis.alignment_rating.score} />
+          </div>
+          <p className="text-sm text-gray-700 mb-3">{analysis.alignment_rating.reasoning}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1">Why not higher?</p>
+              <p className="text-gray-600">{analysis.alignment_rating.why_not_higher}</p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1">Why not lower?</p>
+              <p className="text-gray-600">{analysis.alignment_rating.why_not_lower}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admission: Parent Concerns */}
+      {isAdmission && 'parent_concerns' in analysis && analysis.parent_concerns?.length > 0 && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+            Parent Concerns
+          </h3>
+          <div className="space-y-3">
+            {(analysis as AdmissionAnalysis).parent_concerns.map((c, i) => (
+              <div key={i} className="border-l-2 border-amber-300 pl-3">
+                <p className="text-sm font-medium text-pep-gray">{i + 1}. {c.concern}</p>
+                <p className="text-sm text-gray-600 mt-0.5">{c.detail}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Admission: Red/Green Flags */}
+      {isAdmission && 'red_flags' in analysis && (
+        (() => {
+          const a = analysis as AdmissionAnalysis
+          const hasFlags = (a.red_flags?.length > 0) || (a.green_flags?.length > 0)
+          if (!hasFlags) return null
+          return (
+            <div className="bg-pep-card rounded shadow-sm p-5">
+              <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+                At a Glance
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {a.green_flags?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-green-700 mb-1.5">Green Flags</p>
+                    <ul className="space-y-1.5">
+                      {a.green_flags.map((f, i) => (
+                        <li key={i} className="text-sm text-gray-700 flex gap-2">
+                          <span className="text-green-500 shrink-0 mt-0.5">&#10003;</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {a.red_flags?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-red-700 mb-1.5">Red Flags</p>
+                    <ul className="space-y-1.5">
+                      {a.red_flags.map((f, i) => (
+                        <li key={i} className="text-sm text-gray-700 flex gap-2">
+                          <span className="text-red-400 shrink-0 mt-0.5">&#10007;</span>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })()
+      )}
+
+      {/* Parent-Teacher: What the Parent is Communicating */}
+      {isPT && 'parent_communication' in analysis && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+            What the Parent is Communicating
+          </h3>
+          {(() => {
+            const pc = (analysis as ParentTeacherAnalysis).parent_communication
+            return (
+              <div className="space-y-4">
+                {pc.concerns?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1.5">Concerns</p>
+                    <div className="space-y-2">
+                      {pc.concerns.map((c, i) => (
+                        <div key={i} className="border-l-2 border-amber-300 pl-3">
+                          <p className="text-sm font-medium text-pep-gray">{c.concern}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">{c.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {pc.celebrations?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1.5">Celebrations</p>
+                    <div className="space-y-2">
+                      {pc.celebrations.map((c, i) => (
+                        <div key={i} className="border-l-2 border-green-300 pl-3">
+                          <p className="text-sm font-medium text-pep-gray">{c.item}</p>
+                          <p className="text-sm text-gray-600 mt-0.5">{c.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {pc.questions_requests?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1.5">Questions & Requests</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {pc.questions_requests.map((q, i) => (
+                        <li key={i} className="text-sm text-gray-700">{q}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {pc.unspoken_signals?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1.5">Reading Between the Lines</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {pc.unspoken_signals.map((s, i) => (
+                        <li key={i} className="text-sm text-gray-600 italic">{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </div>
+      )}
+
+      {/* Admission: School Assessment — full layout */}
+      {isAdmission && (analysis as AdmissionAnalysis).school_assessment && (() => {
+        const assessment = (analysis as AdmissionAnalysis).school_assessment
+        return (
+          <div className="bg-pep-card rounded shadow-sm p-5">
+            <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+              How the School Came Across
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {assessment.strengths?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-green-700 mb-1.5">Strengths</p>
+                  <ul className="space-y-1">
+                    {assessment.strengths.map((s, i) => (
+                      <li key={i} className="text-sm text-gray-700 flex gap-1.5">
+                        <span className="text-green-500 shrink-0">+</span>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {assessment.weaknesses?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-red-700 mb-1.5">Weaknesses</p>
+                  <ul className="space-y-1">
+                    {assessment.weaknesses.map((w, i) => (
+                      <li key={i} className="text-sm text-gray-700 flex gap-1.5">
+                        <span className="text-red-400 shrink-0">-</span>
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            {assessment.missed_opportunities?.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-100">
+                <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-1.5">Missed Opportunities</p>
+                <ul className="space-y-1">
+                  {assessment.missed_opportunities.map((m, i) => (
+                    <li key={i} className="text-sm text-gray-600 italic">{m}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* PT: Compact feedback — teacher assessment + missed opportunities + suggestions in one card */}
+      {isPT && (() => {
+        const assessment = (analysis as ParentTeacherAnalysis).teacher_assessment
+        const suggestions = analysis.suggestions
+        if (!assessment && (!suggestions || suggestions.length === 0)) return null
+        return (
+          <div className="bg-pep-card rounded shadow-sm p-5">
+            <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+              Feedback & Next Steps
+            </h3>
+            <div className="space-y-3">
+              {assessment?.strengths?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-green-700 mb-1">What went well</p>
+                  <ul className="space-y-0.5">
+                    {assessment.strengths.map((s, i) => (
+                      <li key={i} className="text-sm text-gray-700 flex gap-1.5">
+                        <span className="text-green-500 shrink-0">+</span>{s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {((assessment?.weaknesses?.length ?? 0) > 0 || (assessment?.missed_opportunities?.length ?? 0) > 0) && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-1">Could be better</p>
+                  <ul className="space-y-0.5">
+                    {assessment?.weaknesses?.map((w, i) => (
+                      <li key={`w-${i}`} className="text-sm text-gray-700 flex gap-1.5">
+                        <span className="text-amber-500 shrink-0">-</span>{w}
+                      </li>
+                    ))}
+                    {assessment?.missed_opportunities?.map((m, i) => (
+                      <li key={`m-${i}`} className="text-sm text-gray-600 flex gap-1.5">
+                        <span className="text-amber-400 shrink-0">-</span>{m}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {suggestions && suggestions.length > 0 && (
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-pep-blue mb-1">Next steps</p>
+                  <ul className="space-y-0.5">
+                    {suggestions.map((s, i) => (
+                      <li key={i} className="text-sm text-gray-700 flex gap-1.5">
+                        <span className="text-pep-blue shrink-0">&rarr;</span>{s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Alignment Rating — admission only (PT is shown above, after Overall Read) */}
+      {isAdmission && analysis.alignment_rating && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <div className="flex items-start justify-between mb-3">
+            <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+              Family-School Alignment
+            </h3>
+            <AlignmentBadge score={analysis.alignment_rating.score} />
+          </div>
+          <p className="text-sm text-gray-700 mb-3">{analysis.alignment_rating.reasoning}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1">Why not higher?</p>
+              <p className="text-gray-600">{analysis.alignment_rating.why_not_higher}</p>
+            </div>
+            <div className="bg-gray-50 rounded p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-1">Why not lower?</p>
+              <p className="text-gray-600">{analysis.alignment_rating.why_not_lower}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Key Quotes */}
+      {'key_quotes' in analysis && analysis.key_quotes?.length > 0 && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-3">
+            Key Quotes
+          </h3>
+          <div className="space-y-3">
+            {analysis.key_quotes.map((q: KeyQuote, i: number) => (
+              <div key={i} className="border-l-2 border-pep-blue/30 pl-3">
+                <p className="text-sm text-gray-700 italic">&ldquo;{q.quote}&rdquo;</p>
+                <p className="text-xs text-pep-gray mt-1">
+                  <span className="font-medium">{q.speaker}</span>
+                  {q.why_it_matters && <span className="text-gray-400"> &mdash; {q.why_it_matters}</span>}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* PT: Follow-up Email Draft */}
+      {isPT && 'followup_email' in analysis && (analysis as ParentTeacherAnalysis).followup_email && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <div className="flex items-start justify-between mb-2">
+            <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+              Follow-up Email Draft
+            </h3>
+            <button
+              onClick={async () => {
+                await navigator.clipboard.writeText((analysis as ParentTeacherAnalysis).followup_email)
+                setEmailCopied(true)
+                setTimeout(() => setEmailCopied(false), 2000)
+              }}
+              className="text-xs text-pep-blue hover:underline cursor-pointer shrink-0"
+            >
+              {emailCopied ? 'Copied!' : 'Copy to clipboard'}
+            </button>
+          </div>
+          <div className="bg-gray-50 rounded p-4 text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">
+            {(analysis as ParentTeacherAnalysis).followup_email}
+          </div>
+        </div>
+      )}
+
+      {/* Suggestions — admission only (PT suggestions are in the Feedback card above) */}
+      {isAdmission && analysis.suggestions?.length > 0 && (
+        <div className="bg-pep-card rounded shadow-sm p-5">
+          <h3 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold mb-2">
+            Suggestions
+          </h3>
+          <ul className="list-disc pl-5 space-y-1">
+            {analysis.suggestions.map((s, i) => (
+              <li key={i} className="text-sm text-gray-700">{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const [meeting, setMeeting] = useState<Meeting | null>(null)
@@ -119,6 +550,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   const [emailCopied, setEmailCopied] = useState(false)
   const [activeTab, setActiveTab] = useState<'summary' | 'actions' | 'transcript'>('summary')
   const [regenerating, setRegenerating] = useState(false)
+  const [selectedForEmail, setSelectedForEmail] = useState<Set<string>>(new Set())
   const [showFindReplace, setShowFindReplace] = useState(false)
   const [findText, setFindText] = useState('')
   const [replaceText, setReplaceText] = useState('')
@@ -166,6 +598,8 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
       const data = await res.json()
       setMeeting(data)
       initSpeakerDrafts(data.participants)
+      // Select all action items for email by default
+      setSelectedForEmail(new Set(data.action_items.map((ai: ActionItem) => ai.id)))
     }
     setLoading(false)
   }
@@ -459,8 +893,8 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
 
   function generateEmailBody(): string {
     if (!meeting) return ''
-    const openItems = meeting.action_items.filter(ai => !ai.is_completed)
-    const lines = openItems.map((ai, i) => {
+    const selectedItems = meeting.action_items.filter(ai => selectedForEmail.has(ai.id))
+    const lines = selectedItems.map((ai, i) => {
       let line = `${i + 1}. ${ai.description}`
       if (ai.due_date) line += ` — due ${new Date(ai.due_date).toLocaleDateString()}`
       return line
@@ -601,8 +1035,12 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
       {meeting.status === 'processing' && (
         <div className="bg-blue-50 rounded p-6 mb-4 text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pep-blue border-t-transparent mb-3" />
-          <p className="text-blue-800 font-medium">Transcription in progress...</p>
-          <p className="text-sm text-blue-600 mt-1">This may take a few minutes.</p>
+          <p className="text-blue-800 font-medium">Sit back and relax — we&apos;re working on it</p>
+          <p className="text-sm text-blue-600 mt-1">
+            Your audio is being transcribed and analyzed. This typically takes 3-5 minutes.
+            <br />
+            You can leave this page and come back — the work continues in the background.
+          </p>
         </div>
       )}
 
@@ -809,58 +1247,116 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
           {/* Action Items Tab */}
           {activeTab === 'actions' && (
             <div className="bg-pep-card rounded shadow-sm p-5">
-              <div className="space-y-2 mb-4">
-                {meeting.action_items.length === 0 ? (
-                  <p className="text-pep-gray text-center py-4">No action items yet.</p>
-                ) : (
-                  meeting.action_items.map((item) => (
-                    <div key={item.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                      <input
-                        type="checkbox"
-                        checked={item.is_completed}
-                        onChange={() => toggleActionItem(item)}
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-pep-blue cursor-pointer"
-                      />
-                      <div className="flex-1">
-                        {editingItemId === item.id ? (
-                          <form
-                            onSubmit={(e) => { e.preventDefault(); saveActionItemEdit(item.id) }}
-                            className="flex gap-2"
-                          >
-                            <input
-                              type="text"
-                              value={editingText}
-                              onChange={(e) => setEditingText(e.target.value)}
-                              autoFocus
-                              onKeyDown={(e) => { if (e.key === 'Escape') { setEditingItemId(null); setEditingText('') } }}
-                              className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
-                            />
-                            <button type="submit" className="text-xs text-pep-blue hover:underline cursor-pointer">Save</button>
-                            <button type="button" onClick={() => { setEditingItemId(null); setEditingText('') }} className="text-xs text-pep-gray hover:underline cursor-pointer">Cancel</button>
-                          </form>
-                        ) : (
-                          <p
-                            onClick={() => { setEditingItemId(item.id); setEditingText(item.description) }}
-                            className={`text-sm cursor-pointer rounded px-1 -mx-1 hover:bg-gray-50 ${item.is_completed ? 'line-through text-pep-gray' : 'text-pep-gray'}`}
-                            title="Click to edit"
-                          >
-                            {item.description}
-                          </p>
-                        )}
-                        {item.due_date && (
-                          <span className="text-xs text-pep-gray mt-0.5">Due: {new Date(item.due_date).toLocaleDateString()}</span>
-                        )}
+              {meeting.action_items.length === 0 ? (
+                <p className="text-pep-gray text-center py-4">No action items yet.</p>
+              ) : (
+                <div className="mb-4">
+                  <p className="text-xs text-pep-gray mb-3">
+                    Check items to include in the email draft. Click an item to edit it.
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setSelectedForEmail(new Set(meeting.action_items.map(ai => ai.id)))}
+                      className="text-xs text-pep-blue hover:underline cursor-pointer"
+                    >
+                      Select all
+                    </button>
+                    <span className="text-xs text-gray-300">|</span>
+                    <button
+                      onClick={() => setSelectedForEmail(new Set())}
+                      className="text-xs text-pep-blue hover:underline cursor-pointer"
+                    >
+                      Deselect all
+                    </button>
+                    <span className="text-xs text-gray-400 ml-auto">
+                      {selectedForEmail.size} of {meeting.action_items.length} selected
+                    </span>
+                  </div>
+
+                  {/* Group items by category */}
+                  {(() => {
+                    const groups: { category: string; items: ActionItem[] }[] = []
+                    const seen = new Set<string>()
+                    for (const item of meeting.action_items) {
+                      const cat = item.category || 'General'
+                      if (!seen.has(cat)) {
+                        seen.add(cat)
+                        groups.push({ category: cat, items: [] })
+                      }
+                      groups.find(g => g.category === cat)!.items.push(item)
+                    }
+
+                    // If there's only one group and it's "General", don't show the header
+                    const showGroupHeaders = groups.length > 1 || groups[0]?.category !== 'General'
+
+                    return (
+                      <div className="space-y-4">
+                        {groups.map((group) => (
+                          <div key={group.category}>
+                            {showGroupHeaders && (
+                              <p className="text-xs font-semibold uppercase tracking-wider text-pep-gray mb-2">
+                                {group.category}
+                              </p>
+                            )}
+                            <div className="space-y-1">
+                              {group.items.map((item) => (
+                                <div key={item.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedForEmail.has(item.id)}
+                                    onChange={() => {
+                                      setSelectedForEmail(prev => {
+                                        const next = new Set(prev)
+                                        if (next.has(item.id)) next.delete(item.id)
+                                        else next.add(item.id)
+                                        return next
+                                      })
+                                    }}
+                                    className="mt-1 h-4 w-4 rounded border-gray-300 text-pep-blue cursor-pointer"
+                                  />
+                                  <div className="flex-1">
+                                    {editingItemId === item.id ? (
+                                      <form
+                                        onSubmit={(e) => { e.preventDefault(); saveActionItemEdit(item.id) }}
+                                        className="flex gap-2"
+                                      >
+                                        <input
+                                          type="text"
+                                          value={editingText}
+                                          onChange={(e) => setEditingText(e.target.value)}
+                                          autoFocus
+                                          onKeyDown={(e) => { if (e.key === 'Escape') { setEditingItemId(null); setEditingText('') } }}
+                                          className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20"
+                                        />
+                                        <button type="submit" className="text-xs text-pep-blue hover:underline cursor-pointer">Save</button>
+                                        <button type="button" onClick={() => { setEditingItemId(null); setEditingText('') }} className="text-xs text-pep-gray hover:underline cursor-pointer">Cancel</button>
+                                      </form>
+                                    ) : (
+                                      <p
+                                        onClick={() => { setEditingItemId(item.id); setEditingText(item.description) }}
+                                        className="text-sm text-pep-gray cursor-pointer rounded px-1 -mx-1 hover:bg-gray-50"
+                                        title="Click to edit"
+                                      >
+                                        {item.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <button
+                                    onClick={() => deleteActionItem(item.id)}
+                                    className="text-xs text-pep-coral hover:text-pep-coralhover cursor-pointer shrink-0"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <button
-                        onClick={() => deleteActionItem(item.id)}
-                        className="text-xs text-pep-coral hover:text-pep-coralhover cursor-pointer shrink-0"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+                    )
+                  })()}
+                </div>
+              )}
 
               {/* Add manual action item */}
               <form onSubmit={addActionItem} className="flex gap-2 pt-3 border-t border-gray-100">
@@ -879,15 +1375,18 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                 </button>
               </form>
 
-              {/* Generate email */}
-              {meeting.action_items.some(ai => !ai.is_completed) && (
+              {/* Generate email from selected items */}
+              {meeting.action_items.length > 0 && (
                 <div className="pt-3 mt-3 border-t border-gray-100">
                   {!showEmailDraft ? (
                     <button
                       onClick={openEmailDraft}
-                      className="w-full border border-gray-200 text-pep-gray px-4 py-2.5 rounded text-sm font-medium uppercase tracking-wider hover:bg-gray-50 transition-colors cursor-pointer"
+                      disabled={selectedForEmail.size === 0}
+                      className="w-full border border-gray-200 text-pep-gray px-4 py-2.5 rounded text-sm font-medium uppercase tracking-wider hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Generate Email
+                      {selectedForEmail.size === 0
+                        ? 'Select items to generate email'
+                        : `Generate Email (${selectedForEmail.size} items)`}
                     </button>
                   ) : (
                     <div className="space-y-2">
@@ -980,6 +1479,14 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                         ))}
                       </ul>
                     </div>
+                  )}
+
+                  {/* Deep Analysis — only shows when analysis exists */}
+                  {meeting.summary.analysis && (
+                    <AnalysisSection
+                      analysis={meeting.summary.analysis}
+                      meetingType={meeting.meeting_type}
+                    />
                   )}
                 </>
               ) : (

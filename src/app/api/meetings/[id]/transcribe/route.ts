@@ -209,8 +209,8 @@ export async function POST(
       }
     }
 
-    // Now run GPT-4o-mini analysis (summary, action items, sentiment)
-    await analyzeMeeting(id, segments, supabase)
+    // Now run AI analysis (thick summary + deep analysis for admission/parent_teacher)
+    await analyzeMeeting(id, segments, supabase, meeting.meeting_type)
 
     // Mark as completed
     await supabase
