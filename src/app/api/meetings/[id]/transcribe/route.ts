@@ -54,8 +54,9 @@ export async function POST(
     }
 
     // Split long audio into 45-minute chunks to avoid Voxtral 429 capacity errors
-    const audioBuffer = Buffer.from(await audioData.arrayBuffer())
+    let audioBuffer: Buffer | null = Buffer.from(await audioData.arrayBuffer())
     const chunks = await splitAudio(audioBuffer)
+    audioBuffer = null // free the original buffer — chunks have their own copies
 
     // Derive extension and MIME from storage path for small unsplit files.
     // splitAudio re-encodes to MP3 when it actually splits, but passes through as-is
@@ -148,8 +149,12 @@ export async function POST(
 
       // Bump speaker offset so next chunk's speakers get unique IDs
       speakerOffset += maxSpeakerInChunk
+
+      // Free this chunk's audio buffer now that it's been transcribed
+      chunk.buffer = Buffer.alloc(0)
     }
 
+    // All audio data is now freed — only text segments remain in memory
     const segments = allSegments
 
     // Clear old transcript data (action items + summary are cleared by analyzeMeeting)
