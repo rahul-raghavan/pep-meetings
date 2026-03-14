@@ -103,14 +103,7 @@ async function extractChunk(
  * Each chunk includes its startOffsetSec so the caller can adjust timestamps.
  */
 export async function splitAudio(inputBuffer: Buffer): Promise<AudioChunk[]> {
-  // Voxtral accepts up to 25MB. If the file is under that, skip ffmpeg entirely
-  // and send it as-is. We only need ffmpeg for large files that need splitting.
   const VOXTRAL_LIMIT = 25 * 1024 * 1024
-  if (inputBuffer.length < VOXTRAL_LIMIT) {
-    console.log(`[split-audio] File is ${(inputBuffer.length / 1024 / 1024).toFixed(1)}MB — under 25MB, skipping ffmpeg`)
-    return [{ buffer: inputBuffer, startOffsetSec: 0 }]
-  }
-
   const id = randomUUID()
   const inputPath = join(tmpdir(), `pep-split-in-${id}`)
   const chunkPaths: string[] = []
@@ -119,7 +112,16 @@ export async function splitAudio(inputBuffer: Buffer): Promise<AudioChunk[]> {
     await writeFile(inputPath, inputBuffer)
 
     const durationSec = await getAudioDuration(inputPath)
-    console.log(`[split-audio] Duration: ${(durationSec / 60).toFixed(1)} minutes`)
+    const sizeMb = (inputBuffer.length / 1024 / 1024).toFixed(1)
+    console.log(`[split-audio] Input: ${sizeMb}MB, ${(durationSec / 60).toFixed(1)} minutes`)
+
+    // Short files under the size limit can go straight to Voxtral.
+    // Duration still matters: long low-bitrate recordings can be <25MB but
+    // still need chunking to avoid provider-side capacity/rate-limit failures.
+    if (inputBuffer.length < VOXTRAL_LIMIT && durationSec <= CHUNK_DURATION_SEC) {
+      console.log('[split-audio] Under 25MB and under 45 minutes — skipping ffmpeg')
+      return [{ buffer: inputBuffer, startOffsetSec: 0 }]
+    }
 
     // No splitting needed for short audio, but still compress to get under 25MB
     if (durationSec <= CHUNK_DURATION_SEC) {

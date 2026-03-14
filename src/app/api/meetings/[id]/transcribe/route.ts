@@ -88,7 +88,7 @@ export async function POST(
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         const formData = new FormData()
         formData.append('file', new Blob([new Uint8Array(chunk.buffer)], { type: mimeType }), `audio.${ext}`)
-        formData.append('model', 'voxtral-mini-latest')
+        formData.append('model', 'voxtral-mini-2602')
         formData.append('diarize', 'true')
         formData.append('timestamp_granularities', 'segment')
 
@@ -214,28 +214,43 @@ export async function POST(
       }
     }
 
-    // Now run AI analysis (thick summary + deep analysis for admission/parent_teacher)
-    await analyzeMeeting(id, segments, supabase, meeting.meeting_type)
+    // Run AI analysis after the transcript is saved. If analysis fails, keep the
+    // transcript available and surface a provider-specific warning to the user.
+    try {
+      await analyzeMeeting(id, segments, supabase, meeting.meeting_type)
 
-    // Mark as completed
-    await supabase
-      .from('pep_meetings')
-      .update({ status: 'completed' })
-      .eq('id', id)
+      await supabase
+        .from('pep_meetings')
+        .update({ status: 'completed', error_message: null })
+        .eq('id', id)
 
-    return NextResponse.json({ success: true, segment_count: segments.length })
+      return NextResponse.json({ success: true, segment_count: segments.length })
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Unknown error'
+      const userMessage = getAnalysisErrorMessage(rawMessage)
+
+      console.error(`[transcribe] Analysis failed after transcript saved for meeting ${id}: ${rawMessage}`)
+
+      await supabase
+        .from('pep_meetings')
+        .update({ status: 'completed', error_message: userMessage })
+        .eq('id', id)
+
+      return NextResponse.json({
+        success: true,
+        segment_count: segments.length,
+        analysis_warning: userMessage,
+      })
+    }
   } catch (err) {
     const rawMessage = err instanceof Error ? err.message : 'Unknown error'
-    // Show a friendly message for rate limits, keep raw message for debugging
     const is429 = rawMessage.includes('429') || rawMessage.includes('capacity')
-    const userMessage = is429
-      ? 'Mistral servers are at capacity. Please try again in a few minutes using the Retry button.'
-      : rawMessage
+    const userMessage = getTranscriptionErrorMessage(rawMessage)
     await supabase
       .from('pep_meetings')
       .update({ status: 'failed', error_message: userMessage })
       .eq('id', id)
-    if (is429) console.log(`Voxtral capacity exhausted for meeting ${id} after all retries. Raw: ${rawMessage}`)
+    if (is429) console.log(`Transcription failed for meeting ${id}. Raw: ${rawMessage}`)
 
     return NextResponse.json({ error: userMessage }, { status: 500 })
   }
@@ -272,3 +287,30 @@ function parseVoxtralSegments(response: Record<string, unknown>): Segment[] {
   return []
 }
 
+function isOpenAIQuotaError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return lower.includes('platform.openai.com')
+    || lower.includes('openai')
+    || lower.includes('current quota')
+    || lower.includes('billing details')
+    || lower.includes('insufficient_quota')
+}
+
+function getAnalysisErrorMessage(rawMessage: string): string {
+  if (isOpenAIQuotaError(rawMessage)) {
+    return 'Transcript saved, but AI summary failed because the OpenAI account is out of quota. Add credits, then click Regenerate Analysis.'
+  }
+  return `Transcript saved, but AI summary failed: ${rawMessage}`
+}
+
+function getTranscriptionErrorMessage(rawMessage: string): string {
+  if (isOpenAIQuotaError(rawMessage)) {
+    return 'AI summary failed because the OpenAI account is out of quota. The transcript may still be available once processing finishes.'
+  }
+
+  if (rawMessage.includes('429') || rawMessage.includes('capacity')) {
+    return 'Mistral transcription is being rate-limited or is at capacity. Please try again in a few minutes using the Retry button.'
+  }
+
+  return rawMessage
+}

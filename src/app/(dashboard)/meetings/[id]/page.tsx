@@ -1057,6 +1057,19 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
+      {meeting.status === 'completed' && meeting.error_message && (
+        <div className="bg-amber-50 rounded p-6 mb-4">
+          <p className="text-amber-900 font-medium">Transcript is ready, but analysis is incomplete</p>
+          <p className="text-sm text-amber-800 mt-1">{meeting.error_message}</p>
+          <button
+            onClick={regenerateAnalysis}
+            className="mt-3 bg-amber-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-amber-700 transition-colors cursor-pointer"
+          >
+            Regenerate Analysis
+          </button>
+        </div>
+      )}
+
       {meeting.status === 'uploading' && meeting.segments.length === 0 && (
         <div className="bg-yellow-50 rounded p-6 mb-4 text-center">
           <p className="text-yellow-800 font-medium">Waiting for audio upload</p>
