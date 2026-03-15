@@ -28,7 +28,8 @@ export type AudioChunk = {
 
 /**
  * Get the duration of an audio file in seconds using ffmpeg.
- * Parses "Duration: HH:MM:SS.xx" from ffmpeg's stderr output.
+ * Prefer the container-level duration, then fall back to the final decoded
+ * progress timestamp for recordings where ffmpeg reports "Duration: N/A".
  */
 async function getAudioDuration(filePath: string): Promise<number> {
   return new Promise<number>((resolve, reject) => {
@@ -39,13 +40,9 @@ async function getAudioDuration(filePath: string): Promise<number> {
       (error, _stdout, stderr) => {
         // ffmpeg writes info to stderr even on success; exit code 0 or 1 is fine
         const output = stderr || ''
-        const match = output.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/)
-        if (match) {
-          const hours = parseInt(match[1], 10)
-          const minutes = parseInt(match[2], 10)
-          const seconds = parseInt(match[3], 10)
-          const centiseconds = parseInt(match[4], 10)
-          const total = hours * 3600 + minutes * 60 + seconds + centiseconds / 100
+        const total = parseDurationFromFfmpegOutput(output)
+
+        if (total !== null) {
           resolve(total)
         } else {
           console.error('[split-audio] Could not parse duration from ffmpeg output:', output.slice(0, 500))
@@ -54,6 +51,35 @@ async function getAudioDuration(filePath: string): Promise<number> {
       }
     )
   })
+}
+
+function parseDurationFromFfmpegOutput(output: string): number | null {
+  const durationMatch = output.match(/Duration:\s*(\d+):(\d+):(\d+)\.(\d+)/)
+  if (durationMatch) {
+    return timestampPartsToSeconds(durationMatch[1], durationMatch[2], durationMatch[3], durationMatch[4])
+  }
+
+  const progressMatches = [...output.matchAll(/time=(\d+):(\d+):(\d+)\.(\d+)/g)]
+  const finalProgressMatch = progressMatches.at(-1)
+  if (finalProgressMatch) {
+    return timestampPartsToSeconds(
+      finalProgressMatch[1],
+      finalProgressMatch[2],
+      finalProgressMatch[3],
+      finalProgressMatch[4]
+    )
+  }
+
+  return null
+}
+
+function timestampPartsToSeconds(hoursRaw: string, minutesRaw: string, secondsRaw: string, fractionalRaw: string): number {
+  const hours = parseInt(hoursRaw, 10)
+  const minutes = parseInt(minutesRaw, 10)
+  const seconds = parseInt(secondsRaw, 10)
+  const fractional = parseInt(fractionalRaw, 10) / 10 ** fractionalRaw.length
+
+  return hours * 3600 + minutes * 60 + seconds + fractional
 }
 
 /**
