@@ -85,6 +85,10 @@ export async function assignMeetingToThread(
     throw new Error(attachNewError.message)
   }
 
+  if (!threadId) {
+    throw new Error('Failed to resolve meeting thread')
+  }
+
   return threadId
 }
 
