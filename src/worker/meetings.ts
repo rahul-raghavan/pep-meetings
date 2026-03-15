@@ -1,3 +1,5 @@
+import { inspect } from 'node:util'
+
 import { processMeeting } from '../lib/process-meeting'
 import { createAdminClient } from '../lib/supabase-admin'
 
@@ -12,7 +14,10 @@ function sleep(ms: number) {
 async function claimNextMeeting() {
   const supabase = createAdminClient()
   const { data, error } = await supabase.rpc('pep_claim_next_meeting')
-  if (error) throw error
+  if (error) {
+    console.error('[meeting-worker] claimNextMeeting RPC error', inspect(error, { depth: null, colors: false }))
+    throw error
+  }
 
   const row = Array.isArray(data) ? data[0] : null
   return row?.id as string | null
@@ -32,7 +37,9 @@ async function workerLoop(workerName: string) {
       const result = await processMeeting(meetingId, supabase)
       console.log(`[meeting-worker:${workerName}] ${meetingId} -> ${result.state}`)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = err instanceof Error
+        ? `${err.message}\n${err.stack || ''}`
+        : inspect(err, { depth: null, colors: false })
       console.error(`[meeting-worker:${workerName}] ${message}`)
       await sleep(ERROR_DELAY_MS)
     }
@@ -47,6 +54,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[meeting-worker] Fatal error', err)
+  console.error('[meeting-worker] Fatal error', inspect(err, { depth: null, colors: false }))
   process.exit(1)
 })
