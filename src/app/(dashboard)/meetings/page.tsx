@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { getMeetingStatusLabel } from '@/lib/meeting-status'
 
 type Meeting = {
   id: string
@@ -39,7 +40,9 @@ const TYPE_ORDER = ['admission', 'parent_teacher', 'training', 'hr', 'internal',
 
 const STATUS_COLORS: Record<string, string> = {
   uploading: 'bg-yellow-100 text-yellow-800',
-  processing: 'bg-blue-100 text-blue-800',
+  queued: 'bg-sky-100 text-sky-800',
+  transcribing: 'bg-blue-100 text-blue-800',
+  analyzing: 'bg-indigo-100 text-indigo-800',
   completed: 'bg-green-100 text-green-800',
   failed: 'bg-red-100 text-red-800',
 }
@@ -106,7 +109,7 @@ export default function MeetingsPage() {
   }
 
   function retryTranscription(meetingId: string) {
-    setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'processing' } : m))
+    setMeetings(prev => prev.map(m => m.id === meetingId ? { ...m, status: 'queued' } : m))
     fetch(`/api/meetings/${meetingId}/transcribe`, { method: 'POST' }).catch(() => {})
     router.push(`/meetings/${meetingId}`)
   }
@@ -361,7 +364,7 @@ export default function MeetingsPage() {
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0 ml-3">
                                   <span className={`text-xs font-medium px-2.5 py-1 rounded ${STATUS_COLORS[meeting.status] || 'bg-gray-100 text-gray-800'}`}>
-                                    {meeting.status}
+                                    {getMeetingStatusLabel(meeting.status)}
                                   </span>
                                   <svg
                                     className={`w-4 h-4 text-pep-gray transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -425,45 +428,24 @@ export default function MeetingsPage() {
                                       )}
                                     </div>
                                   </div>
-                                ) : meeting.status === 'processing' ? (
-                                  (() => {
-                                    const staleMinutes = 15
-                                    const createdAt = new Date(meeting.created_at).getTime()
-                                    const isStale = Date.now() - createdAt > staleMinutes * 60 * 1000
-                                    return isStale ? (
-                                      <div className="space-y-2">
-                                        <p className="text-sm text-amber-700">Transcription appears to be stuck. You can retry it.</p>
-                                        <div className="flex items-center gap-3">
+                                ) : ['queued', 'transcribing', 'analyzing'].includes(meeting.status) ? (
+                                  <p className="text-sm text-blue-600">
+                                    {meeting.status === 'queued'
+                                      ? 'Queued for background processing...'
+                                      : meeting.status === 'transcribing'
+                                        ? 'Transcription in progress...'
+                                        : 'Generating summary and action items...'}
+                                  </p>
+                                ) : meeting.status === 'failed' ? (
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-red-600">Processing failed.</p>
+                                    <div className="flex items-center gap-3">
                                           <button
                                             onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
                                             className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
                                           >
-                                            Retry Transcription
+                                            Requeue Meeting
                                           </button>
-                                          {meeting.can_edit && (
-                                            <button
-                                              onClick={(e) => { e.stopPropagation(); deleteMeeting(meeting.id) }}
-                                              className="text-sm text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                                            >
-                                              Delete
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <p className="text-sm text-blue-600">Transcription in progress...</p>
-                                    )
-                                  })()
-                                ) : meeting.status === 'failed' ? (
-                                  <div className="space-y-2">
-                                    <p className="text-sm text-red-600">Transcription failed.</p>
-                                    <div className="flex items-center gap-3">
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
-                                        className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
-                                      >
-                                        Retry Transcription
-                                      </button>
                                       <Link
                                         href={`/meetings/${meeting.id}`}
                                         className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline"
@@ -488,7 +470,7 @@ export default function MeetingsPage() {
                                         onClick={(e) => { e.stopPropagation(); retryTranscription(meeting.id) }}
                                         className="text-sm font-medium text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer"
                                       >
-                                        Retry Transcription
+                                        Requeue Meeting
                                       </button>
                                       {meeting.can_edit && (
                                         <button

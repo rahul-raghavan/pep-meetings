@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, use, useMemo } from 'react'
 import Link from 'next/link'
+import { isActiveMeetingStatus } from '@/lib/meeting-status'
 
 type Participant = {
   id: string
@@ -111,6 +112,8 @@ type Meeting = {
   participants: Participant[]
   action_items: ActionItem[]
   summary: Summary
+  queue_position: number | null
+  active_processing_count: number
 }
 
 const SENTIMENT_STYLES: Record<string, string> = {
@@ -566,9 +569,9 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     }
   }, [id])
 
-  // Poll every 5s while meeting is processing, stop once it completes/fails
+  // Poll every 5s while meeting is queued or actively processing.
   useEffect(() => {
-    if (meeting?.status === 'processing') {
+    if (isActiveMeetingStatus(meeting?.status)) {
       if (!pollingRef.current) {
         pollingRef.current = setInterval(async () => {
           const res = await fetch(`/api/meetings/${id}`)
@@ -576,7 +579,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
             const data = await res.json()
             setMeeting(data)
             initSpeakerDrafts(data.participants)
-            if (data.status !== 'processing') {
+            if (!isActiveMeetingStatus(data.status)) {
               if (pollingRef.current) clearInterval(pollingRef.current)
               pollingRef.current = null
             }
@@ -925,10 +928,70 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   }
 
   async function retryTranscription() {
-    setMeeting(prev => prev ? { ...prev, status: 'processing', error_message: null } : null)
+    setMeeting(prev => prev ? { ...prev, status: 'queued', error_message: null } : null)
     const res = await fetch(`/api/meetings/${id}/transcribe`, { method: 'POST' })
     await fetchMeeting()
     void res
+  }
+
+  function renderProgressState() {
+    if (!meeting) return null
+
+    if (meeting.status === 'queued') {
+      const ahead = Math.max((meeting.queue_position || 1) - 1, 0)
+      return (
+        <div className="bg-blue-50 rounded p-6 mb-4 text-center">
+          <div className="inline-block rounded-full h-8 w-8 border-4 border-pep-blue/25 border-t-pep-blue animate-spin mb-3" />
+          <p className="text-blue-800 font-medium">Audio uploaded and queued</p>
+          <p className="text-sm text-blue-700 mt-1">
+            {ahead > 0
+              ? `${ahead} meeting${ahead > 1 ? 's are' : ' is'} ahead of this one.`
+              : 'This meeting is next in line.'}
+            {' '}
+            {meeting.active_processing_count > 0
+              ? `${meeting.active_processing_count} meeting${meeting.active_processing_count > 1 ? 's are' : ' is'} currently being processed.`
+              : 'The worker will pick this up as soon as capacity is free.'}
+          </p>
+          <p className="text-sm text-blue-600 mt-2">
+            During busy weeks this can take longer. You can leave this page and come back later.
+          </p>
+        </div>
+      )
+    }
+
+    if (meeting.status === 'transcribing') {
+      return (
+        <div className="bg-blue-50 rounded p-6 mb-4 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pep-blue border-t-transparent mb-3" />
+          <p className="text-blue-800 font-medium">Transcription in progress</p>
+          <p className="text-sm text-blue-600 mt-1">
+            Your audio is being sent to the transcription service. Speaker labels will appear first, then the summary.
+          </p>
+        </div>
+      )
+    }
+
+    if (meeting.status === 'analyzing') {
+      return (
+        <div className="bg-blue-50 rounded p-6 mb-4 text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pep-blue border-t-transparent mb-3" />
+          <p className="text-blue-800 font-medium">Transcript ready, analysis in progress</p>
+          <p className="text-sm text-blue-600 mt-1">
+            The transcript is saved. We&apos;re now generating the summary, action items, and deeper analysis.
+          </p>
+        </div>
+      )
+    }
+
+    if (meeting.status === 'uploading') {
+      return (
+        <div className="bg-yellow-50 rounded p-6 mb-4 text-center">
+          <p className="text-yellow-800 font-medium">Waiting for audio upload</p>
+        </div>
+      )
+    }
+
+    return null
   }
 
   function formatTime(seconds: number): string {
@@ -978,7 +1041,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
           {meeting.notes && <p className="text-sm text-pep-gray mt-2">{meeting.notes}</p>}
         </div>
         {/* Action buttons */}
-        {meeting.status === 'completed' && meeting.segments.length > 0 && (
+        {meeting.segments.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {meeting.can_edit && (
               <button
@@ -1031,28 +1094,18 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         </form>
       )}
 
-      {/* Processing / Failed states */}
-      {meeting.status === 'processing' && (
-        <div className="bg-blue-50 rounded p-6 mb-4 text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-pep-blue border-t-transparent mb-3" />
-          <p className="text-blue-800 font-medium">Sit back and relax — we&apos;re working on it</p>
-          <p className="text-sm text-blue-600 mt-1">
-            Your audio is being transcribed and analyzed. This typically takes 3-5 minutes.
-            <br />
-            You can leave this page and come back — the work continues in the background.
-          </p>
-        </div>
-      )}
+      {/* Active / Failed states */}
+      {renderProgressState()}
 
       {meeting.status === 'failed' && (
         <div className="bg-red-50 rounded p-6 mb-4">
-          <p className="text-red-800 font-medium">Transcription failed</p>
+          <p className="text-red-800 font-medium">Processing failed</p>
           <p className="text-sm text-red-600 mt-1">{meeting.error_message || 'Unknown error'}</p>
           <button
             onClick={retryTranscription}
             className="mt-3 bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition-colors cursor-pointer"
           >
-            Retry Transcription
+            Requeue Meeting
           </button>
         </div>
       )}
@@ -1067,12 +1120,6 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
           >
             Regenerate Analysis
           </button>
-        </div>
-      )}
-
-      {meeting.status === 'uploading' && meeting.segments.length === 0 && (
-        <div className="bg-yellow-50 rounded p-6 mb-4 text-center">
-          <p className="text-yellow-800 font-medium">Waiting for audio upload</p>
         </div>
       )}
 
@@ -1211,7 +1258,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Tabs */}
-      {meeting.status === 'completed' && (
+      {meeting.segments.length > 0 && (
         <>
           <div className="flex gap-1 mb-4 overflow-x-auto">
             {(['summary', 'actions', 'transcript'] as const).map(tab => (
@@ -1504,7 +1551,11 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
                 </>
               ) : (
                 <div className="bg-pep-card rounded shadow-sm p-5">
-                  <p className="text-pep-gray text-center py-6">No summary available.</p>
+                  <p className="text-pep-gray text-center py-6">
+                    {meeting.status === 'analyzing'
+                      ? 'Transcript is ready. Summary and action items are still being generated.'
+                      : 'No summary available.'}
+                  </p>
                 </div>
               )}
             </div>

@@ -1,4 +1,4 @@
-import { createServiceClient } from '@/lib/supabase-server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type Segment = { speaker: string; text: string; start: number; end: number }
 
@@ -177,7 +177,7 @@ async function generateDeepAnalysis(
 export async function analyzeMeeting(
   meetingId: string,
   segments: Segment[],
-  supabase: ReturnType<typeof createServiceClient>,
+  supabase: SupabaseClient,
   meetingType?: string,
 ) {
   if (segments.length === 0) return

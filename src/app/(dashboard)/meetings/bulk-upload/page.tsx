@@ -34,7 +34,7 @@ const ACCEPTED_EXTENSIONS = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.opus', '
 const STATUS_CONFIG: Record<FileStatus, { label: string; color: string }> = {
   queued: { label: 'Queued', color: 'bg-gray-100 text-gray-600' },
   uploading: { label: 'Uploading...', color: 'bg-yellow-100 text-yellow-800' },
-  transcribing: { label: 'Transcribing...', color: 'bg-blue-100 text-blue-800' },
+  transcribing: { label: 'Queued / Processing', color: 'bg-blue-100 text-blue-800' },
   completed: { label: 'Done', color: 'bg-green-100 text-green-800' },
   failed: { label: 'Failed', color: 'bg-red-100 text-red-800' },
 }
@@ -47,8 +47,6 @@ const TYPE_LABELS: Record<string, string> = {
   internal: 'Internal',
   other: 'Other',
 }
-
-const MAX_CONCURRENT_TRANSCRIPTIONS = 3
 
 export default function BulkUploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -206,12 +204,7 @@ export default function BulkUploadPage() {
         throw new Error(err.error || 'Failed to upload audio')
       }
 
-      // Step 3: Fire transcription (don't await — fire and forget)
       updateFile(entry.id, { status: 'transcribing' })
-      fetch(`/api/meetings/${meeting.id}/transcribe`, { method: 'POST' }).catch(() => {
-        // Error will be caught by polling
-      })
-
       return { meetingId: meeting.id, success: true }
     } catch (err) {
       updateFile(entry.id, {
@@ -228,22 +221,12 @@ export default function BulkUploadPage() {
     setIsProcessing(true)
 
     const queuedFiles = files.filter(f => f.status === 'queued')
-    const transcribingIds: string[] = []
     let nextIndex = 0
 
     async function worker() {
       while (nextIndex < queuedFiles.length) {
         const entry = queuedFiles[nextIndex++]
-        const result = await processFile(entry)
-        if (result.success && result.meetingId) {
-          transcribingIds.push(result.meetingId)
-        }
-
-        // Respect max concurrent transcriptions: if we hit the limit,
-        // wait for at least one to finish before sending the next
-        if (transcribingIds.length >= MAX_CONCURRENT_TRANSCRIPTIONS) {
-          await waitForOneTranscription(transcribingIds)
-        }
+        await processFile(entry)
       }
     }
 
@@ -254,38 +237,6 @@ export default function BulkUploadPage() {
 
     // Start polling for remaining transcriptions
     startPolling()
-  }
-
-  // Wait until at least one transcribing meeting finishes
-  async function waitForOneTranscription(ids: string[]) {
-    while (true) {
-      await sleep(3000)
-      const res = await fetch('/api/meetings/batch-status', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids }),
-      })
-      if (!res.ok) continue
-
-      const { statuses } = await res.json()
-      for (const id of [...ids]) {
-        const s = statuses[id]
-        if (s && (s.status === 'completed' || s.status === 'failed')) {
-          // Remove from active list
-          const idx = ids.indexOf(id)
-          if (idx > -1) ids.splice(idx, 1)
-          // Update file entry
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.meetingId === id
-                ? { ...f, status: s.status, error: s.error_message || undefined }
-                : f
-            )
-          )
-          return // At least one freed up
-        }
-      }
-    }
   }
 
   function startPolling() {
@@ -675,8 +626,4 @@ export default function BulkUploadPage() {
       </div>
     </div>
   )
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

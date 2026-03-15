@@ -1,4 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## PEP Meetings
+
+PEP Meetings is built around a simple operational model:
+
+- uploads should feel seamless
+- audio should be stored safely first
+- transcription and analysis happen in the background
+- next-day completion is acceptable during peak weeks
+
+That means the app uses:
+
+- a web service for the UI and API
+- a single background worker for queued meeting processing
+
+## Worker Setup
+
+Run the web app normally:
+
+```bash
+npm run dev
+```
+
+Run the background worker in a second terminal:
+
+```bash
+npm run worker:meetings
+```
+
+Recommended worker defaults:
+
+```bash
+MEETING_WORKER_CONCURRENCY=1
+MEETING_WORKER_POLL_MS=5000
+MEETING_WORKER_ERROR_MS=15000
+```
+
+Uploads are queued automatically after the audio file is stored. The worker picks meetings up later and moves them through:
+
+- `queued`
+- `transcribing`
+- `analyzing`
+- `completed`
+- `failed`
 
 ## Getting Started
 

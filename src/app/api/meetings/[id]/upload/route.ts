@@ -100,7 +100,14 @@ export async function POST(
       audio_storage_path: storagePath,
       audio_file_size: buffer.length,
       audio_mime_type: mimeType,
-      status: 'uploading',
+      status: 'queued',
+      queued_at: new Date().toISOString(),
+      processing_started_at: null,
+      completed_at: null,
+      attempt_count: 0,
+      next_retry_at: null,
+      last_error_at: null,
+      error_message: null,
     })
     .eq('id', id)
 

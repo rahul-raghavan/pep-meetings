@@ -45,6 +45,30 @@ export async function GET(
     user.role === 'admin' ||
     meetingRes.data.recorded_by === user.id
 
+  let queuePosition: number | null = null
+  let activeCount = 0
+
+  if (['queued', 'transcribing', 'analyzing'].includes(meetingRes.data.status)) {
+    const [{ count: active }, { count: queuedAhead }] = await Promise.all([
+      db
+        .from('pep_meetings')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['transcribing', 'analyzing']),
+      meetingRes.data.status === 'queued' && meetingRes.data.queued_at
+        ? db
+          .from('pep_meetings')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'queued')
+          .lt('queued_at', meetingRes.data.queued_at)
+        : Promise.resolve({ count: null }),
+    ])
+
+    activeCount = active || 0
+    queuePosition = meetingRes.data.status === 'queued'
+      ? (queuedAhead || 0) + 1
+      : 0
+  }
+
   return NextResponse.json({
     ...meetingRes.data,
     recorded_by_name: (meetingRes.data.pep_meeting_users as Record<string, unknown>)?.name || 'Unknown',
@@ -55,6 +79,8 @@ export async function GET(
     participants: participantsRes.data || [],
     action_items: actionItemsRes.data || [],
     summary: summaryRes.data || null,
+    queue_position: queuePosition,
+    active_processing_count: activeCount,
   })
 }
 

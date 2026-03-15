@@ -143,10 +143,6 @@ export default function RecordMeetingPage() {
         throw new Error(err.error || 'Failed to upload audio')
       }
 
-      // Step 3: Fire-and-forget transcription — redirect immediately
-      // The meeting detail page already polls for status updates
-      fetch(`/api/meetings/${meeting.id}/transcribe`, { method: 'POST' }).catch(() => {})
-
       // Clear IndexedDB and redirect
       recorder.clearCurrentSession()
       router.push(`/meetings/${meeting.id}`)
@@ -178,11 +174,11 @@ export default function RecordMeetingPage() {
         <div className="bg-pep-card rounded shadow-sm p-8 text-center">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-pep-blue border-t-transparent mb-4" />
           <h2 className="text-lg font-semibold text-pep-gray mb-2">
-            Processing Recording
+            Uploading Recording
           </h2>
           <p className="text-pep-gray">{uploadProgress}</p>
           <p className="text-sm text-pep-gray mt-2">
-            Please don&apos;t close this page.
+            You&apos;ll be redirected once the audio is safely queued.
           </p>
         </div>
       </div>
@@ -220,7 +216,7 @@ export default function RecordMeetingPage() {
               onClick={handleUpload}
               className="flex-1 bg-pep-blue text-white rounded px-4 py-3 font-medium hover:bg-pep-dark transition-colors cursor-pointer uppercase tracking-wider"
             >
-              Upload &amp; Transcribe
+              Upload &amp; Queue
             </button>
             <button
               onClick={() => {
