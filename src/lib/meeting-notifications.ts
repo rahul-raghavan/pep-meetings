@@ -13,6 +13,11 @@ export type NewMeetingNotification = {
   classes: { id: string; name: string }[]
 }
 
+type JoinedClass = {
+  id: string
+  name: string
+}
+
 export async function ensureNotificationState(
   db: SupabaseClient,
   userId: string
@@ -119,10 +124,13 @@ export async function getNewMeetingsSinceLastSeen(
       .in('meeting_id', meetingIds)
 
     for (const row of classRows || []) {
-      const cls = row.pep_classes as Record<string, unknown> | null
+      const joined = row.pep_classes as unknown
+      const cls = Array.isArray(joined)
+        ? (joined[0] as JoinedClass | undefined)
+        : (joined as JoinedClass | null)
       if (!cls) continue
       if (!classMap[row.meeting_id]) classMap[row.meeting_id] = []
-      classMap[row.meeting_id].push({ id: cls.id as string, name: cls.name as string })
+      classMap[row.meeting_id].push({ id: cls.id, name: cls.name })
     }
   }
 
