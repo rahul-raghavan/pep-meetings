@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ClassSelector } from '@/components/class-selector'
+import { MeetingThreadPicker } from '@/components/meeting-thread-picker'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
+import type { ThreadOption } from '@/lib/meeting-threads'
 import type { RecordingMetadata } from '@/lib/recording-store'
 
 type PageState = 'setup' | 'recording' | 'paused' | 'preview' | 'uploading'
@@ -34,6 +36,7 @@ export default function RecordMeetingPage() {
   )
   const [notes, setNotes] = useState('')
   const [classIds, setClassIds] = useState<string[]>([])
+  const [threadMeeting, setThreadMeeting] = useState<ThreadOption | null>(null)
 
   // Upload state
   const [uploadProgress, setUploadProgress] = useState('')
@@ -74,14 +77,15 @@ export default function RecordMeetingPage() {
       recorder.setError('Please enter a meeting title before recording.')
       return
     }
-    recorder.startRecording({
-      title: title.trim(),
-      meetingType,
-      meetingDate,
-      classIds,
-      notes,
-    })
-  }, [title, meetingType, meetingDate, classIds, notes, recorder])
+      recorder.startRecording({
+        title: title.trim(),
+        meetingType,
+        meetingDate,
+        classIds,
+        notes,
+        threadMeeting,
+      })
+  }, [title, meetingType, meetingDate, classIds, notes, threadMeeting, recorder])
 
   const handleRecoverSession = useCallback(
     async (session: RecordingMetadata) => {
@@ -92,6 +96,7 @@ export default function RecordMeetingPage() {
         setMeetingDate(meta.meetingDate)
         setClassIds(meta.classIds)
         setNotes(meta.notes)
+        setThreadMeeting(meta.threadMeeting || null)
       }
     },
     [recorder]
@@ -115,6 +120,7 @@ export default function RecordMeetingPage() {
           meeting_date: meetingDate,
           notes,
           class_ids: classIds,
+          thread_with_meeting_id: threadMeeting?.id || null,
         }),
       })
       if (!createRes.ok) {
@@ -152,7 +158,7 @@ export default function RecordMeetingPage() {
       )
       setPageState('preview')
     }
-  }, [recorder, title, meetingType, meetingDate, notes, classIds, router])
+  }, [recorder, title, meetingType, meetingDate, notes, classIds, threadMeeting, router])
 
   // Memoize blob URL to avoid creating a new one every render (and leaking old ones)
   const previewBlobUrl = useMemo(() => {
@@ -471,6 +477,11 @@ export default function RecordMeetingPage() {
             className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20 resize-none"
           />
         </div>
+
+        <MeetingThreadPicker
+          value={threadMeeting}
+          onChange={setThreadMeeting}
+        />
 
         {/* Mic selector */}
         {recorder.audioDevices.length > 1 && (

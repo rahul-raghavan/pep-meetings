@@ -3,6 +3,8 @@
  * Chunks are saved every ~10s so if the browser/tab crashes, we can rebuild the audio.
  */
 
+import type { ThreadOption } from '@/lib/meeting-threads'
+
 const DB_NAME = 'pep-recordings'
 const DB_VERSION = 1
 const CHUNKS_STORE = 'chunks'
@@ -15,6 +17,7 @@ export type RecordingMetadata = {
   meetingDate: string
   classIds: string[]
   notes: string
+  threadMeeting: ThreadOption | null
   mimeType: string
   startedAt: number // timestamp
 }

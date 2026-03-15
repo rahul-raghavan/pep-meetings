@@ -3,6 +3,8 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ClassSelector } from '@/components/class-selector'
+import { MeetingThreadPicker } from '@/components/meeting-thread-picker'
+import type { ThreadOption } from '@/lib/meeting-threads'
 
 export default function NewMeetingPage() {
   const router = useRouter()
@@ -13,6 +15,7 @@ export default function NewMeetingPage() {
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
   const [classIds, setClassIds] = useState<string[]>([])
+  const [threadMeeting, setThreadMeeting] = useState<ThreadOption | null>(null)
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [step, setStep] = useState<'details' | 'uploading' | 'done'>('details')
   const [error, setError] = useState('')
@@ -38,6 +41,7 @@ export default function NewMeetingPage() {
           meeting_date: meetingDate,
           notes,
           class_ids: classIds,
+          thread_with_meeting_id: threadMeeting?.id || null,
         }),
       })
       if (!createRes.ok) {
@@ -152,6 +156,11 @@ export default function NewMeetingPage() {
             className="w-full border border-gray-200 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pep-blue/20 resize-none"
           />
         </div>
+
+        <MeetingThreadPicker
+          value={threadMeeting}
+          onChange={setThreadMeeting}
+        />
 
         <div>
           <label className="block text-sm font-medium text-pep-gray mb-1">Audio File</label>

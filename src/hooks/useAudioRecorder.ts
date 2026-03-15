@@ -9,6 +9,7 @@ import {
   clearSession,
   type RecordingMetadata,
 } from '@/lib/recording-store'
+import type { ThreadOption } from '@/lib/meeting-threads'
 
 export type RecorderState =
   | 'idle'
@@ -151,6 +152,7 @@ export function useAudioRecorder() {
       meetingDate: string
       classIds: string[]
       notes: string
+      threadMeeting: ThreadOption | null
     }) => {
       setError(null)
 
@@ -208,6 +210,7 @@ export function useAudioRecorder() {
           meetingDate: metadata.meetingDate,
           classIds: metadata.classIds,
           notes: metadata.notes,
+          threadMeeting: metadata.threadMeeting,
           mimeType: mime,
           startedAt: Date.now(),
         }).catch(() => {}) // Non-fatal if IDB fails

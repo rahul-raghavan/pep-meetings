@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase-server'
 import { getCurrentUser } from '@/lib/auth'
 import { assertMeetingAccess, assertMeetingEdit, AccessError } from '@/lib/rbac'
+import { assignMeetingToThread, clearMeetingThread, getThreadForMeeting } from '@/lib/meeting-threads'
 
 // GET — full meeting detail with transcript, participants, action items, summary
 export async function GET(
@@ -47,6 +48,7 @@ export async function GET(
 
   let queuePosition: number | null = null
   let activeCount = 0
+  const thread = await getThreadForMeeting(db, user, meetingRes.data.thread_id || null)
 
   if (['queued', 'transcribing', 'analyzing'].includes(meetingRes.data.status)) {
     const [{ count: active }, { count: queuedAhead }] = await Promise.all([
@@ -79,12 +81,13 @@ export async function GET(
     participants: participantsRes.data || [],
     action_items: actionItemsRes.data || [],
     summary: summaryRes.data || null,
+    thread,
     queue_position: queuePosition,
     active_processing_count: activeCount,
   })
 }
 
-// PATCH — update meeting fields (title, meeting_type, meeting_date, notes, class_ids)
+// PATCH — update meeting fields (title, meeting_type, meeting_date, notes, class_ids, thread)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -152,6 +155,26 @@ export async function PATCH(
       await db
         .from('pep_meeting_classes')
         .insert(body.class_ids.map((cid: string) => ({ meeting_id: id, class_id: cid })))
+    }
+  }
+
+  if (body.clear_thread === true) {
+    try {
+      await clearMeetingThread(db, id)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to clear meeting thread' },
+        { status: 500 }
+      )
+    }
+  } else if (typeof body.thread_with_meeting_id === 'string' && body.thread_with_meeting_id.trim()) {
+    try {
+      await assignMeetingToThread(db, user, id, body.thread_with_meeting_id)
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to update meeting thread' },
+        { status: 400 }
+      )
     }
   }
 

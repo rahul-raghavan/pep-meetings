@@ -2,7 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
+import { MeetingThreadPicker } from '@/components/meeting-thread-picker'
 import { filenameToTitle } from '@/lib/filename-utils'
+import type { ThreadOption } from '@/lib/meeting-threads'
 
 type FileStatus = 'queued' | 'uploading' | 'transcribing' | 'completed' | 'failed'
 
@@ -54,6 +56,7 @@ export default function BulkUploadPage() {
   const [meetingType, setMeetingType] = useState('parent_teacher')
   const [meetingDate, setMeetingDate] = useState(new Date().toISOString().split('T')[0])
   const [defaultClassIds, setDefaultClassIds] = useState<string[]>([])
+  const [defaultThreadMeeting, setDefaultThreadMeeting] = useState<ThreadOption | null>(null)
   const [userClasses, setUserClasses] = useState<UserClass[]>([])
   const [classesLoading, setClassesLoading] = useState(true)
   const [isProcessing, setIsProcessing] = useState(false)
@@ -183,6 +186,7 @@ export default function BulkUploadPage() {
           meeting_type: entry.meetingType,
           meeting_date: meetingDate,
           class_ids: entry.classIds,
+          thread_with_meeting_id: defaultThreadMeeting?.id || null,
         }),
       })
       if (!createRes.ok) {
@@ -449,6 +453,14 @@ export default function BulkUploadPage() {
             />
           </div>
         </div>
+
+        <MeetingThreadPicker
+          value={defaultThreadMeeting}
+          onChange={setDefaultThreadMeeting}
+          disabled={isProcessing}
+          label="Default thread (optional)"
+          helperText="If set, every meeting in this batch will be linked to the selected existing meeting."
+        />
       </div>
 
       {/* Drop zone — hide during processing and when all done */}
@@ -557,6 +569,11 @@ export default function BulkUploadPage() {
                       <option value="training">Training</option>
                       <option value="other">Other</option>
                     </select>
+                    {defaultThreadMeeting && (
+                      <span className="text-xs text-pep-blue truncate">
+                        Threaded to {defaultThreadMeeting.title}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -570,6 +587,11 @@ export default function BulkUploadPage() {
                   <span className="text-xs text-pep-gray">
                     &middot; {TYPE_LABELS[entry.meetingType] || entry.meetingType}
                   </span>
+                  {defaultThreadMeeting && (
+                    <span className="text-xs text-pep-blue">
+                      &middot; Threaded
+                    </span>
+                  )}
                 </div>
               )}
             </div>

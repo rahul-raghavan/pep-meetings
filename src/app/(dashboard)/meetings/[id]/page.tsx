@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useRef, use, useMemo } from 'react'
 import Link from 'next/link'
-import { isActiveMeetingStatus } from '@/lib/meeting-status'
+import { getMeetingStatusLabel, isActiveMeetingStatus } from '@/lib/meeting-status'
+import { MeetingThreadPicker } from '@/components/meeting-thread-picker'
+import type { ThreadOption } from '@/lib/meeting-threads'
 
 type Participant = {
   id: string
@@ -96,6 +98,15 @@ type Summary = {
   analysis?: Analysis
 } | null
 
+type ThreadMeeting = {
+  id: string
+  title: string
+  meeting_date: string
+  meeting_type: string
+  status: string
+  recorded_by_name: string
+}
+
 type Meeting = {
   id: string
   title: string
@@ -112,6 +123,11 @@ type Meeting = {
   participants: Participant[]
   action_items: ActionItem[]
   summary: Summary
+  thread: {
+    id: string
+    title: string | null
+    meetings: ThreadMeeting[]
+  } | null
   queue_position: number | null
   active_processing_count: number
 }
@@ -559,6 +575,10 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
   const [replaceText, setReplaceText] = useState('')
   const [replacing, setReplacing] = useState(false)
   const [replaceResult, setReplaceResult] = useState<string | null>(null)
+  const [threadEditOpen, setThreadEditOpen] = useState(false)
+  const [threadSelection, setThreadSelection] = useState<ThreadOption | null>(null)
+  const [savingThread, setSavingThread] = useState(false)
+  const [threadError, setThreadError] = useState<string | null>(null)
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -934,6 +954,61 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     void res
   }
 
+  async function saveThreading() {
+    if (!meeting || !threadSelection) return
+
+    setSavingThread(true)
+    setThreadError(null)
+
+    try {
+      const res = await fetch(`/api/meetings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ thread_with_meeting_id: threadSelection.id }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to update threading')
+      }
+
+      await fetchMeeting()
+      setThreadEditOpen(false)
+    } catch (error) {
+      setThreadError(error instanceof Error ? error.message : 'Failed to update threading')
+    } finally {
+      setSavingThread(false)
+    }
+  }
+
+  async function clearThreading() {
+    if (!meeting?.thread) return
+
+    setSavingThread(true)
+    setThreadError(null)
+
+    try {
+      const res = await fetch(`/api/meetings/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clear_thread: true }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to clear thread')
+      }
+
+      await fetchMeeting()
+      setThreadEditOpen(false)
+      setThreadSelection(null)
+    } catch (error) {
+      setThreadError(error instanceof Error ? error.message : 'Failed to clear thread')
+    } finally {
+      setSavingThread(false)
+    }
+  }
+
   function renderProgressState() {
     if (!meeting) return null
 
@@ -1060,6 +1135,141 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
           </div>
         )}
       </div>
+
+      {meeting.can_edit && (
+        <div className="bg-pep-card rounded shadow-sm p-4 mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+                Threading
+              </h2>
+              <p className="text-sm text-pep-gray mt-1">
+                {meeting.thread
+                  ? `This meeting is currently linked with ${meeting.thread.meetings.length} meeting${meeting.thread.meetings.length > 1 ? 's' : ''}.`
+                  : 'This meeting is not linked to a thread yet.'}
+              </p>
+            </div>
+
+            {!threadEditOpen ? (
+              <button
+                onClick={() => {
+                  setThreadSelection(null)
+                  setThreadError(null)
+                  setThreadEditOpen(true)
+                }}
+                className="text-sm text-pep-blue hover:underline cursor-pointer"
+              >
+                {meeting.thread ? 'Edit thread' : 'Add to thread'}
+              </button>
+            ) : (
+              <div className="flex gap-2 shrink-0">
+                <button
+                  onClick={() => {
+                    setThreadEditOpen(false)
+                    setThreadSelection(null)
+                    setThreadError(null)
+                  }}
+                  className="text-sm text-pep-gray hover:underline cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveThreading}
+                  disabled={savingThread || !threadSelection}
+                  className="text-sm bg-pep-blue text-white px-3 py-1.5 rounded uppercase tracking-wider hover:bg-pep-dark transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {savingThread ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {threadEditOpen && (
+            <div className="mt-4 space-y-3">
+              <MeetingThreadPicker
+                value={threadSelection}
+                onChange={setThreadSelection}
+                excludeMeetingId={meeting.id}
+                helperText="Pick another meeting to join its thread."
+              />
+              {meeting.thread && (
+                <button
+                  onClick={clearThreading}
+                  disabled={savingThread}
+                  className="text-xs text-pep-coral hover:text-pep-coralhover hover:underline cursor-pointer disabled:opacity-50"
+                >
+                  Remove this meeting from its current thread
+                </button>
+              )}
+              {threadError && (
+                <p className="text-sm text-red-600">{threadError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {meeting.thread && meeting.thread.meetings.length > 1 && (
+        <div className="bg-pep-card rounded shadow-sm p-4 mb-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="uppercase tracking-[0.15em] text-pep-blue text-sm font-semibold">
+                Thread
+              </h2>
+              <p className="text-xs text-pep-gray mt-1">
+                Related meetings in this sequence. This leaves room for a future cross-meeting summary.
+              </p>
+            </div>
+            <span className="text-xs text-pep-blue bg-pep-blue/10 px-2.5 py-1 rounded">
+              {meeting.thread.meetings.length} meetings
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {meeting.thread.meetings.map((threadMeeting, index) => {
+              const isCurrent = threadMeeting.id === meeting.id
+              const content = (
+                <div
+                  className={`rounded border px-3 py-3 transition-colors ${
+                    isCurrent
+                      ? 'border-pep-blue bg-pep-blue/5'
+                      : 'border-gray-200 hover:border-pep-blue/30 hover:bg-pep-blue/5'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className={`text-sm font-medium ${isCurrent ? 'text-pep-blue' : 'text-pep-gray'}`}>
+                        {index + 1}. {threadMeeting.title}
+                      </p>
+                      <p className="text-xs text-pep-gray mt-1">
+                        {new Date(threadMeeting.meeting_date).toLocaleDateString()} &middot; {TYPE_LABELS[threadMeeting.meeting_type] || threadMeeting.meeting_type} &middot; {threadMeeting.recorded_by_name}
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {isCurrent && (
+                        <span className="block text-xs text-pep-blue font-medium mb-1">
+                          Current
+                        </span>
+                      )}
+                      <span className="text-xs text-pep-gray">
+                        {getMeetingStatusLabel(threadMeeting.status)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+
+              return isCurrent ? (
+                <div key={threadMeeting.id}>{content}</div>
+              ) : (
+                <Link key={threadMeeting.id} href={`/meetings/${threadMeeting.id}`}>
+                  {content}
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Find & Replace bar */}
       {showFindReplace && (

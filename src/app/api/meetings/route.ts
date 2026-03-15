@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase-server'
 import { getCurrentUser } from '@/lib/auth'
 import { getAccessibleClassIds } from '@/lib/rbac'
+import { assignMeetingToThread } from '@/lib/meeting-threads'
 
 // POST — create a meeting
 export async function POST(request: NextRequest) {
@@ -9,7 +10,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { title, meeting_type, meeting_date, notes, class_ids } = body
+  const { title, meeting_type, meeting_date, notes, class_ids, thread_with_meeting_id } = body
 
   if (!title) {
     return NextResponse.json({ error: 'Title is required' }, { status: 400 })
@@ -75,6 +76,19 @@ export async function POST(request: NextRequest) {
     await db
       .from('pep_meeting_classes')
       .insert(classIdsArray.map(cid => ({ meeting_id: data.id, class_id: cid })))
+  }
+
+  if (thread_with_meeting_id) {
+    try {
+      await assignMeetingToThread(db, user, data.id, thread_with_meeting_id)
+    } catch (error) {
+      await db.from('pep_meeting_classes').delete().eq('meeting_id', data.id)
+      await db.from('pep_meetings').delete().eq('id', data.id)
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to assign meeting thread' },
+        { status: 400 }
+      )
+    }
   }
 
   return NextResponse.json(data)

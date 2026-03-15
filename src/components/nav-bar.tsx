@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase-browser'
 import { useRouter } from 'next/navigation'
@@ -13,6 +14,44 @@ type NavBarProps = {
 export function NavBar({ userName, userRole }: NavBarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchNotifications() {
+      try {
+        const res = await fetch('/api/meetings/notifications')
+        if (!res.ok) return
+        const data = await res.json()
+        if (!cancelled) {
+          setUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : 0)
+        }
+      } catch {
+        // Ignore transient nav polling failures
+      }
+    }
+
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 30000)
+
+    function handleNotificationsUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ unreadCount?: number }>).detail
+      if (typeof detail?.unreadCount === 'number') {
+        setUnreadCount(detail.unreadCount)
+      } else {
+        fetchNotifications()
+      }
+    }
+
+    window.addEventListener('meeting-notifications-updated', handleNotificationsUpdated)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      window.removeEventListener('meeting-notifications-updated', handleNotificationsUpdated)
+    }
+  }, [])
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -46,7 +85,14 @@ export function NavBar({ userName, userRole }: NavBarProps) {
                     : 'hover:bg-white/10'
                 }`}
               >
-                {link.label}
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{link.label}</span>
+                  {link.href === '/meetings' && unreadCount > 0 && (
+                    <span className="min-w-5 h-5 px-1 rounded-full bg-pep-coral text-white text-[10px] leading-5 text-center">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </span>
+                  )}
+                </span>
               </Link>
             ))}
           </div>
