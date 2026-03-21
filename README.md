@@ -32,6 +32,8 @@ Recommended worker defaults:
 MEETING_WORKER_CONCURRENCY=1
 MEETING_WORKER_POLL_MS=5000
 MEETING_WORKER_ERROR_MS=15000
+MEETING_AUDIO_RETENTION_HOURS=6
+MEETING_AUDIO_CLEANUP_INTERVAL_MS=900000
 ```
 
 Uploads are queued automatically after the audio file is stored. The worker picks meetings up later and moves them through:
@@ -41,6 +43,8 @@ Uploads are queued automatically after the audio file is stored. The worker pick
 - `analyzing`
 - `completed`
 - `failed`
+
+Completed-meeting audio is also cleaned up automatically by the worker after the configured retention window. The default is `6` hours after `completed_at`, which keeps storage growth under control while still leaving a short reprocessing buffer.
 
 ## Getting Started
 
